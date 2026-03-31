@@ -88,10 +88,10 @@ export default function DatenbankPage() {
   const f = (v: string, field: keyof FoodForm) => setForm(prev => ({ ...prev, [field]: v }))
 
   const inputStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white',
-    borderRadius: '0.5rem',
+    background: 'white',
+    border: '1px solid #e2e8f0',
+    color: '#1e293b',
+    borderRadius: '0.75rem',
     padding: '0.5rem 0.75rem',
     fontSize: '0.875rem',
     outline: 'none',
@@ -99,10 +99,10 @@ export default function DatenbankPage() {
   }
 
   const selectStyle: React.CSSProperties = {
-    background: '#1e293b',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white',
-    borderRadius: '0.5rem',
+    background: 'white',
+    border: '1px solid #e2e8f0',
+    color: '#1e293b',
+    borderRadius: '0.75rem',
     padding: '0.5rem 0.75rem',
     fontSize: '0.875rem',
     outline: 'none',
@@ -112,10 +112,10 @@ export default function DatenbankPage() {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-white">Lebensmittel-Datenbank</h1>
+        <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Lebensmittel-Datenbank</h1>
         <button
           onClick={openAdd}
-          style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+          style={{ background: '#475569' }}
           className="text-white px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
         >
           + Hinzufügen
@@ -135,22 +135,22 @@ export default function DatenbankPage() {
       />
 
       {/* Table */}
-      <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '1rem', overflow: 'hidden' }}>
+      <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '1rem', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.04)' }}>
-              <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>Name</th>
-              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>kcal</th>
-              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>Protein</th>
-              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>CHF</th>
-              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>je</th>
+            <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+              <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>Name</th>
+              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>kcal</th>
+              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>Protein</th>
+              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>CHF</th>
+              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>je</th>
               <th className="px-4 py-3 w-28"></th>
             </tr>
           </thead>
           <tbody>
             {foods.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-sm" style={{ color: '#64748b' }}>
+                <td colSpan={6} className="px-5 py-10 text-center text-sm" style={{ color: '#94a3b8' }}>
                   {search ? 'Keine Ergebnisse.' : 'Noch keine Lebensmittel eingetragen.'}
                 </td>
               </tr>
@@ -158,21 +158,24 @@ export default function DatenbankPage() {
             {foods.map(food => (
               <tr
                 key={food.id}
-                style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                style={{ borderTop: '1px solid #f1f5f9' }}
                 className="transition-colors"
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <td className="px-5 py-3 font-medium text-white">{food.name}</td>
-                <td className="px-4 py-3 text-right" style={{ color: '#94a3b8' }}>{food.calories_per_100}</td>
-                <td className="px-4 py-3 text-right" style={{ color: '#94a3b8' }}>{food.protein_per_100}g</td>
-                <td className="px-4 py-3 text-right" style={{ color: '#94a3b8' }}>{Number(food.cost_per_100).toFixed(2)}</td>
-                <td className="px-4 py-3 text-right text-xs" style={{ color: '#64748b' }}>100{food.unit}</td>
+                <td className="px-5 py-3 font-medium" style={{ color: '#1e293b' }}>{food.name}</td>
+                <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{food.calories_per_100}</td>
+                <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{food.protein_per_100}g</td>
+                <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{Number(food.cost_per_100).toFixed(2)}</td>
+                <td className="px-4 py-3 text-right text-xs" style={{ color: '#94a3b8' }}>100{food.unit}</td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => openEdit(food)} className="text-xs text-indigo-400 hover:text-indigo-300 mr-3 transition-colors">Bearbeiten</button>
-                  <button onClick={() => remove(food.id)} className="text-xs transition-colors" style={{ color: '#f87171' }}
-                    onMouseEnter={e => ((e.target as HTMLElement).style.color = '#ef4444')}
-                    onMouseLeave={e => ((e.target as HTMLElement).style.color = '#f87171')}
+                  <button onClick={() => openEdit(food)} className="text-xs mr-3 transition-colors" style={{ color: '#475569' }}
+                    onMouseEnter={e => ((e.target as HTMLElement).style.color = '#1e293b')}
+                    onMouseLeave={e => ((e.target as HTMLElement).style.color = '#475569')}
+                  >Bearbeiten</button>
+                  <button onClick={() => remove(food.id)} className="text-xs transition-colors" style={{ color: '#dc2626' }}
+                    onMouseEnter={e => ((e.target as HTMLElement).style.color = '#b91c1c')}
+                    onMouseLeave={e => ((e.target as HTMLElement).style.color = '#dc2626')}
                   >Löschen</button>
                 </td>
               </tr>
@@ -185,18 +188,18 @@ export default function DatenbankPage() {
       {showModal && (
         <div
           className="fixed inset-0 flex items-center justify-center z-50 p-4"
-          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+          style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}
         >
-          <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '1rem' }} className="w-full max-w-md shadow-xl">
-            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <h2 className="font-semibold text-white text-sm">
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '1rem' }} className="w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #f1f5f9' }}>
+              <h2 className="font-semibold text-sm" style={{ color: '#1e293b' }}>
                 {editing ? 'Lebensmittel bearbeiten' : 'Lebensmittel hinzufügen'}
               </h2>
             </div>
             <div className="p-6 space-y-4">
               {/* Name */}
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: '#94a3b8' }}>Name</label>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Name</label>
                 <input type="text" value={form.name} onChange={e => f(e.target.value, 'name')}
                   placeholder="z.B. Haferflocken"
                   style={inputStyle}
@@ -204,7 +207,7 @@ export default function DatenbankPage() {
               </div>
               {/* Unit */}
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: '#94a3b8' }}>Einheit</label>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Einheit</label>
                 <select value={form.unit} onChange={e => f(e.target.value as 'g' | 'ml', 'unit')}
                   style={selectStyle}
                 >
@@ -220,7 +223,7 @@ export default function DatenbankPage() {
                   { label: `CHF / 100${form.unit}`, field: 'cost_per_100' as const, placeholder: '0.00', step: '0.01' },
                 ].map(({ label, field, placeholder, step }) => (
                   <div key={field}>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: '#94a3b8' }}>{label}</label>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>{label}</label>
                     <input type="number" value={form[field]} onChange={e => f(e.target.value, field)}
                       placeholder={placeholder} min="0" step={step}
                       style={inputStyle}
@@ -229,11 +232,11 @@ export default function DatenbankPage() {
                 ))}
               </div>
             </div>
-            <div className="px-6 py-4 flex justify-end gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="px-6 py-4 flex justify-end gap-2" style={{ borderTop: '1px solid #f1f5f9' }}>
               <button
                 onClick={() => setShowModal(false)}
                 className="px-4 py-2 text-sm rounded-lg transition-colors"
-                style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.08)' }}
+                style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}
               >
                 Abbrechen
               </button>
@@ -241,7 +244,7 @@ export default function DatenbankPage() {
                 onClick={save}
                 disabled={!form.name || saving}
                 className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-40 transition-colors"
-                style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+                style={{ background: '#475569' }}
               >
                 {saving ? 'Speichern…' : 'Speichern'}
               </button>

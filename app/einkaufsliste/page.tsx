@@ -143,9 +143,9 @@ export default function EinkaufslistePage() {
   const checked   = items.filter(i => i.checked)
 
   const inputStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white',
+    background: 'white',
+    border: '1px solid #e2e8f0',
+    color: '#1e293b',
     borderRadius: '0.75rem',
     padding: '0.625rem 1rem',
     fontSize: '0.875rem',
@@ -155,7 +155,7 @@ export default function EinkaufslistePage() {
   return (
     <div className="max-w-lg mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-white">Einkaufsliste</h1>
+        <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Einkaufsliste</h1>
         <div className="flex items-center gap-2">
           {checked.length > 0 && (
             <button
@@ -186,23 +186,23 @@ export default function EinkaufslistePage() {
       {showSync && (
         <div
           className="rounded-2xl p-5 mb-5"
-          style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}
+          style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
         >
-          <h2 className="text-sm font-semibold text-white mb-3">Woche synchronisieren</h2>
-          <p className="text-xs mb-4" style={{ color: '#64748b' }}>
+          <h2 className="text-sm font-semibold mb-3" style={{ color: '#1e293b' }}>Woche synchronisieren</h2>
+          <p className="text-xs mb-4" style={{ color: '#94a3b8' }}>
             Berechnet alle benötigten Zutaten aus dem Wochenplan und summiert sie auf.
           </p>
           <div className="flex items-center gap-2 mb-4">
-            <label className="text-xs shrink-0" style={{ color: '#94a3b8' }}>Wochenbeginn (Montag):</label>
+            <label className="text-xs shrink-0" style={{ color: '#64748b' }}>Wochenbeginn (Montag):</label>
             <input
               type="date"
               value={weekStart}
               onChange={e => setWeekStart(e.target.value)}
               style={{
                 flex: 1,
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: 'white',
+                background: 'white',
+                border: '1px solid #e2e8f0',
+                color: '#1e293b',
                 borderRadius: '0.5rem',
                 padding: '0.375rem 0.75rem',
                 fontSize: '0.875rem',
@@ -213,7 +213,7 @@ export default function EinkaufslistePage() {
               onClick={syncFromPlan}
               disabled={syncing}
               className="text-white px-4 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-opacity hover:opacity-90 shrink-0"
-              style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+              style={{ background: '#475569' }}
             >
               {syncing ? 'Lädt…' : 'Berechnen'}
             </button>
@@ -223,20 +223,21 @@ export default function EinkaufslistePage() {
             <>
               <div
                 className="rounded-xl mb-3 overflow-hidden"
-                style={{ border: '1px solid rgba(255,255,255,0.07)' }}
+                style={{ border: '1px solid #f1f5f9' }}
               >
                 {syncItems.map((item, i) => (
                   <div
                     key={i}
                     className="flex items-center justify-between px-4 py-2.5"
-                    style={i > 0 ? { borderTop: '1px solid rgba(255,255,255,0.06)' } : {}}
+                    style={i > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}
                   >
-                    <span className="text-sm text-white">{item.food_name}</span>
+                    <span className="text-sm" style={{ color: '#1e293b' }}>{item.food_name}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium" style={{ color: '#94a3b8' }}>{formatAmount(item.total, item.unit)}</span>
+                      <span className="text-sm font-medium" style={{ color: '#64748b' }}>{formatAmount(item.total, item.unit)}</span>
                       <button
                         onClick={() => addSyncItemToList(item)}
-                        className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+                        className="text-xs font-medium transition-colors"
+                        style={{ color: '#475569' }}
                       >
                         + Liste
                       </button>
@@ -255,7 +256,7 @@ export default function EinkaufslistePage() {
           )}
 
           {!syncing && syncItems.length === 0 && (
-            <p className="text-xs text-center py-2" style={{ color: '#64748b' }}>
+            <p className="text-xs text-center py-2" style={{ color: '#94a3b8' }}>
               Für diese Woche sind keine Mahlzeiten geplant.
             </p>
           )}
@@ -281,7 +282,7 @@ export default function EinkaufslistePage() {
         <button
           type="submit"
           className="text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
-          style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+          style={{ background: '#475569' }}
         >
           +
         </button>
@@ -290,34 +291,34 @@ export default function EinkaufslistePage() {
       {/* List */}
       <div
         className="rounded-2xl overflow-hidden"
-        style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}
+        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
       >
         {items.length === 0 && (
-          <p className="px-5 py-10 text-center text-sm" style={{ color: '#64748b' }}>Einkaufsliste ist leer</p>
+          <p className="px-5 py-10 text-center text-sm" style={{ color: '#94a3b8' }}>Einkaufsliste ist leer</p>
         )}
         {[...unchecked, ...checked].map((item, idx) => (
           <div
             key={item.id}
             className="flex items-center gap-3 px-5 py-3"
-            style={idx > 0 ? { borderTop: '1px solid rgba(255,255,255,0.06)' } : {}}
+            style={idx > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}
           >
             <input
               type="checkbox"
               checked={item.checked}
               onChange={() => toggle(item.id, item.checked)}
-              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
-              style={{ accentColor: '#6366f1' }}
+              className="w-4 h-4 rounded shrink-0"
+              style={{ accentColor: '#475569' }}
             />
             <span
               className={`flex-1 text-sm ${item.checked ? 'line-through' : ''}`}
-              style={{ color: item.checked ? '#475569' : 'white' }}
+              style={{ color: item.checked ? '#94a3b8' : '#1e293b' }}
             >
               {item.item}
             </span>
             {item.quantity && (
               <span
                 className="text-xs font-medium shrink-0"
-                style={{ color: item.checked ? '#475569' : '#94a3b8' }}
+                style={{ color: item.checked ? '#94a3b8' : '#64748b' }}
               >
                 {item.quantity}
               </span>

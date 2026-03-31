@@ -10,12 +10,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="de">
-      <body className="antialiased" style={{ background: '#0f172a' }}>
-        <div className="flex min-h-screen">
-          <Navigation />
-          <main className="flex-1 overflow-y-auto p-8" style={{ background: '#0f172a' }}>
+      <body className="antialiased" style={{ background: '#f8fafc' }}>
+        <div className="min-h-screen flex flex-col">
+          <main className="flex-1 overflow-y-auto main-content px-5 pt-6 pb-4" style={{ background: '#f8fafc' }}>
             {children}
           </main>
+          <Navigation />
         </div>
       </body>
     </html>

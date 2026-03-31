@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { loadSettings, goalColor, goalTextClass } from '@/lib/settings'
+import { loadSettings, goalColor } from '@/lib/settings'
 
 const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
   'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
@@ -22,15 +22,15 @@ function getMondayOfWeek(d: Date) {
 }
 
 function tileStyle(plan: Plan | undefined, goals: Goals, isToday: boolean, isPast: boolean): React.CSSProperties {
-  if (isToday) return { background: 'rgba(99,102,241,0.15)', border: '1.5px solid rgba(99,102,241,0.5)' }
+  if (isToday) return { background: '#eef2ff', border: '1.5px solid #818cf8' }
   if (!plan || plan.kcal_total === 0) {
-    if (isPast) return { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }
-    return { background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(255,255,255,0.1)' }
+    if (isPast) return { background: '#f8fafc', border: '1px solid #f1f5f9' }
+    return { background: 'white', border: '1px dashed #e2e8f0' }
   }
   const pct = plan.kcal_total / goals.kcal
-  if (pct >= 0.95) return { background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)' }
-  if (pct >= 0.6)  return { background: 'rgba(245,158,11,0.1)',  border: '1px solid rgba(245,158,11,0.2)' }
-  return { background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }
+  if (pct >= 0.95) return { background: '#f0fdf4', border: '1px solid #bbf7d0' }
+  if (pct >= 0.6)  return { background: '#fffbeb', border: '1px solid #fde68a' }
+  return { background: '#fef2f2', border: '1px solid #fecaca' }
 }
 
 function exportWeek(days: Date[], plans: Plan[], markers: Marker[], goals: Goals) {
@@ -85,21 +85,21 @@ function DayPopup({ dateStr, plan, marker, goals, onClose, onMarkerChange }: {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
-      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-      <div ref={ref} className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl"
-        style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)' }}>
+      style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
+      <div ref={ref} className="w-full max-w-sm rounded-2xl overflow-hidden shadow-xl"
+        style={{ background: 'white', border: '1px solid #e2e8f0' }}>
 
         {/* Header */}
         <div className="px-5 py-4 flex items-center justify-between"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(99,102,241,0.08)' }}>
+          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6366f1' }}>
+            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>
               {d.getFullYear()}
             </p>
-            <h3 className="text-sm font-bold text-white mt-0.5">{label}</h3>
+            <h3 className="text-sm font-bold mt-0.5" style={{ color: '#1e293b' }}>{label}</h3>
           </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg leading-none transition-all"
-            style={{ color: '#64748b', background: 'rgba(255,255,255,0.05)' }}>×</button>
+            style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -116,11 +116,11 @@ function DayPopup({ dateStr, plan, marker, goals, onClose, onMarkerChange }: {
                     <span style={{ color: '#64748b' }}>{s.label}</span>
                     <span className="font-bold" style={{ color: goalColor(Number(s.v), s.max) }}>
                       {s.pre ? `CHF ${s.v}` : `${s.v}${s.u}`}
-                      {s.max > 0 && <span style={{ color: '#475569', fontWeight: 400 }}> / {s.max}{s.u}</span>}
+                      {s.max > 0 && <span style={{ color: '#94a3b8', fontWeight: 400 }}> / {s.max}{s.u}</span>}
                     </span>
                   </div>
                   {s.max > 0 && (
-                    <div className="h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div className="h-1.5 rounded-full" style={{ background: '#f1f5f9' }}>
                       <div className="h-full rounded-full transition-all" style={{
                         width: `${Math.min((Number(s.v) / s.max) * 100, 100)}%`,
                         background: goalColor(Number(s.v), s.max),
@@ -132,22 +132,22 @@ function DayPopup({ dateStr, plan, marker, goals, onClose, onMarkerChange }: {
             </div>
           ) : (
             <div className="py-3 text-center">
-              <p className="text-sm" style={{ color: '#475569' }}>Noch nichts geplant</p>
+              <p className="text-sm" style={{ color: '#94a3b8' }}>Noch nichts geplant</p>
             </div>
           )}
 
           {/* Toggles */}
-          <div className="pt-1 space-y-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="pt-1 space-y-2" style={{ borderTop: '1px solid #f1f5f9' }}>
             {([
-              { field: 'training'   as const, label: 'Trainingstag', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
-              { field: 'eingeladen' as const, label: 'Eingeladen / Auswärts', color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
+              { field: 'training'   as const, label: 'Trainingstag', color: '#2563eb', bg: '#eff6ff' },
+              { field: 'eingeladen' as const, label: 'Eingeladen / Auswärts', color: '#7c3aed', bg: '#f5f3ff' },
             ]).map(({ field, label, color, bg }) => (
               <div key={field} className="flex items-center justify-between py-2 px-3 rounded-xl cursor-pointer transition-all"
-                style={{ background: marker?.[field] ? bg : 'rgba(255,255,255,0.04)' }}
+                style={{ background: marker?.[field] ? bg : '#f8fafc' }}
                 onClick={() => toggleMarker(field)}>
-                <span className="text-sm font-medium" style={{ color: marker?.[field] ? color : '#64748b' }}>{label}</span>
+                <span className="text-sm font-medium" style={{ color: marker?.[field] ? color : '#94a3b8' }}>{label}</span>
                 <div className="w-9 h-5 rounded-full relative transition-all"
-                  style={{ background: marker?.[field] ? color : 'rgba(255,255,255,0.1)' }}>
+                  style={{ background: marker?.[field] ? color : '#e2e8f0' }}>
                   <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
                     style={{ transform: marker?.[field] ? 'translateX(1.1rem)' : 'translateX(0.125rem)' }} />
                 </div>
@@ -159,7 +159,7 @@ function DayPopup({ dateStr, plan, marker, goals, onClose, onMarkerChange }: {
         <div className="px-5 pb-5">
           <button onClick={() => router.push(`/tag/${dateStr}`)}
             className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all"
-            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+            style={{ background: '#475569' }}>
             Zum Tagesplan →
           </button>
         </div>
@@ -207,10 +207,10 @@ export default function KalenderPage() {
     <div className="max-w-3xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-lg font-bold text-white">Kalender</h1>
+        <h1 className="text-lg font-bold" style={{ color: '#1e293b' }}>Kalender</h1>
         <button onClick={() => exportWeek(thisWeek, plans, markers, goals)}
           className="no-print flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl transition-all"
-          style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.08)' }}>
+          style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
@@ -221,40 +221,40 @@ export default function KalenderPage() {
       {/* Legend */}
       <div className="flex items-center gap-4 mb-4 flex-wrap">
         {[
-          { color: 'rgba(16,185,129,0.3)', label: 'Vollständig' },
-          { color: 'rgba(245,158,11,0.3)',  label: 'Teilweise' },
-          { color: '#3b82f6',  label: 'Training', dot: true },
-          { color: '#8b5cf6',  label: 'Eingeladen', dot: true },
+          { color: '#bbf7d0', label: 'Vollständig' },
+          { color: '#fde68a',  label: 'Teilweise' },
+          { color: '#2563eb',  label: 'Training', dot: true },
+          { color: '#7c3aed',  label: 'Eingeladen', dot: true },
         ].map(l => (
           <div key={l.label} className="flex items-center gap-1.5">
             <div className={`${l.dot ? 'w-2 h-2 rounded-full' : 'w-3 h-3 rounded-sm'}`}
               style={{ background: l.color, border: l.dot ? 'none' : `1px solid ${l.color}` }} />
-            <span className="text-xs" style={{ color: '#475569' }}>{l.label}</span>
+            <span className="text-xs" style={{ color: '#64748b' }}>{l.label}</span>
           </div>
         ))}
       </div>
 
       {/* Calendar card */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
         {/* Month nav */}
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #f1f5f9' }}>
           <button onClick={() => setAnchor(new Date(year, month - 1, 1))}
             className="w-8 h-8 flex items-center justify-center rounded-xl transition-all"
-            style={{ color: '#64748b', background: 'rgba(255,255,255,0.05)' }}>←</button>
+            style={{ color: '#64748b', background: '#f1f5f9' }}>←</button>
           <div className="text-center">
-            <span className="font-bold text-white text-sm">{MONTH_NAMES[month]} {year}</span>
+            <span className="font-bold text-sm" style={{ color: '#1e293b' }}>{MONTH_NAMES[month]} {year}</span>
             <button onClick={() => setAnchor(new Date())}
-              className="block mx-auto text-xs mt-0.5 transition-all" style={{ color: '#6366f1' }}>Heute</button>
+              className="block mx-auto text-xs mt-0.5 transition-all" style={{ color: '#475569' }}>Heute</button>
           </div>
           <button onClick={() => setAnchor(new Date(year, month + 1, 1))}
             className="w-8 h-8 flex items-center justify-center rounded-xl transition-all"
-            style={{ color: '#64748b', background: 'rgba(255,255,255,0.05)' }}>→</button>
+            style={{ color: '#64748b', background: '#f1f5f9' }}>→</button>
         </div>
 
         {/* Day headers */}
         <div className="grid grid-cols-7 px-3 pt-3">
           {DAY_SHORT.map(d => (
-            <div key={d} className="text-center text-xs font-bold pb-2 uppercase tracking-wider" style={{ color: '#334155' }}>{d}</div>
+            <div key={d} className="text-center text-xs font-bold pb-2 uppercase tracking-wider" style={{ color: '#94a3b8' }}>{d}</div>
           ))}
         </div>
 
@@ -272,19 +272,19 @@ export default function KalenderPage() {
             return (
               <button key={i} onClick={() => setPopup(ds)}
                 className="rounded-xl p-2 flex flex-col transition-all active:scale-95"
-                style={{ minHeight: 80, ...tileStyle(plan, goals, isToday, isPast), outline: isWeek && !isToday ? '1px solid rgba(99,102,241,0.3)' : 'none', outlineOffset: '-1px' }}>
+                style={{ minHeight: 80, ...tileStyle(plan, goals, isToday, isPast), outline: isWeek && !isToday ? '1px solid #c7d2fe' : 'none', outlineOffset: '-1px' }}>
 
                 {/* Number */}
                 <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold mb-1"
-                  style={isToday ? { background: '#6366f1', color: 'white' } : isPast && !plan ? { color: '#334155' } : { color: '#94a3b8' }}>
+                  style={isToday ? { background: '#475569', color: 'white' } : isPast && !plan ? { color: '#cbd5e1' } : { color: '#475569' }}>
                   {day.getDate()}
                 </span>
 
                 {/* Marker dots */}
                 {(marker?.training || marker?.eingeladen) && (
                   <div className="flex gap-1 mb-1">
-                    {marker.training   && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#3b82f6' }} />}
-                    {marker.eingeladen && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#8b5cf6' }} />}
+                    {marker.training   && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#2563eb' }} />}
+                    {marker.eingeladen && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#7c3aed' }} />}
                   </div>
                 )}
 
@@ -294,7 +294,7 @@ export default function KalenderPage() {
                     <div className="text-[10px] font-bold leading-tight" style={{ color: goalColor(plan.kcal_total, goals.kcal) }}>
                       {Math.round(plan.kcal_total)}
                     </div>
-                    <div className="text-[9px] leading-tight" style={{ color: '#475569' }}>kcal</div>
+                    <div className="text-[9px] leading-tight" style={{ color: '#94a3b8' }}>kcal</div>
                   </div>
                 )}
               </button>

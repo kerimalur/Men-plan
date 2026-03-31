@@ -18,7 +18,7 @@ export async function saveSetting(key: string, value: string) {
 }
 
 export function goalColor(value: number, max: number): string {
-  if (max <= 0) return '#6366f1'
+  if (max <= 0) return '#475569'
   const pct = value / max
   if (pct >= 1.0) return '#16a34a'
   if (pct >= 0.8) return '#d97706'
@@ -26,7 +26,7 @@ export function goalColor(value: number, max: number): string {
 }
 
 export function goalTextClass(value: number, max: number): string {
-  if (max <= 0) return 'text-indigo-600'
+  if (max <= 0) return 'text-slate-600'
   const pct = value / max
   if (pct >= 1.0) return 'text-green-600'
   if (pct >= 0.8) return 'text-amber-600'

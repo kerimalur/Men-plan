@@ -4,14 +4,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { sumItems } from '@/lib/calculations'
-import { loadSettings, goalColor, goalTextClass } from '@/lib/settings'
+import { loadSettings, goalColor } from '@/lib/settings'
 import MealModal from '@/components/MealModal'
 
 const MEAL_TYPES = [
-  { key: 'fruehstueck', label: 'Frühstück',   gradient: 'linear-gradient(135deg,#f59e0b,#f97316)', glow: 'rgba(245,158,11,0.15)' },
-  { key: 'mittagessen', label: 'Mittagessen',  gradient: 'linear-gradient(135deg,#10b981,#0d9488)', glow: 'rgba(16,185,129,0.12)' },
-  { key: 'abendessen',  label: 'Abendessen',   gradient: 'linear-gradient(135deg,#3b82f6,#6366f1)', glow: 'rgba(59,130,246,0.12)' },
-  { key: 'snack',       label: 'Snack',        gradient: 'linear-gradient(135deg,#8b5cf6,#ec4899)', glow: 'rgba(139,92,246,0.12)' },
+  { key: 'fruehstueck', label: 'Frühstück',   color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+  { key: 'mittagessen', label: 'Mittagessen',  color: '#059669', bg: '#f0fdf4', border: '#bbf7d0' },
+  { key: 'abendessen',  label: 'Abendessen',   color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe' },
+  { key: 'snack',       label: 'Snack',        color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
 ]
 
 const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
@@ -117,30 +117,30 @@ export default function TagPage() {
       <div className="flex items-center justify-between mb-5">
         <button onClick={() => navDay(-1)}
           className="w-9 h-9 flex items-center justify-center rounded-xl transition-all"
-          style={{ color: '#64748b', background: 'rgba(255,255,255,0.05)' }}>←</button>
+          style={{ color: '#64748b', background: '#f1f5f9' }}>←</button>
         <div className="text-center">
-          <h1 className="text-sm font-bold text-white">{formattedDate}</h1>
-          {datum === todayStr && <span className="text-xs font-semibold" style={{ color: '#6366f1' }}>Heute</span>}
+          <h1 className="text-sm font-bold" style={{ color: '#1e293b' }}>{formattedDate}</h1>
+          {datum === todayStr && <span className="text-xs font-semibold" style={{ color: '#475569' }}>Heute</span>}
         </div>
         <button onClick={() => navDay(1)}
           className="w-9 h-9 flex items-center justify-center rounded-xl transition-all"
-          style={{ color: '#64748b', background: 'rgba(255,255,255,0.05)' }}>→</button>
+          style={{ color: '#64748b', background: '#f1f5f9' }}>→</button>
       </div>
 
       {/* View toggle */}
       <div className="flex items-center gap-1 p-1 rounded-xl mb-5"
-        style={{ background: 'rgba(255,255,255,0.05)' }}>
+        style={{ background: '#f1f5f9' }}>
         {(['tag', 'woche'] as const).map(v => (
           <button key={v} onClick={() => setView(v)}
             className="flex-1 py-2 text-xs rounded-lg font-semibold transition-all"
-            style={view === v ? { background: '#1e293b', color: '#e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' } : { color: '#475569' }}>
+            style={view === v ? { background: 'white', color: '#1e293b', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } : { color: '#94a3b8' }}>
             {v === 'tag' ? 'Tagesplan' : 'Wochenübersicht'}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-sm" style={{ color: '#475569' }}>Laden…</div>
+        <div className="text-center py-12 text-sm" style={{ color: '#94a3b8' }}>Laden…</div>
       ) : view === 'woche' ? (
         // ── Week view ─────────────────────────────────────────
         <div className="space-y-2">
@@ -151,14 +151,15 @@ export default function TagPage() {
               <button key={i} onClick={() => { router.push(`/tag/${ds}`); setView('tag') }}
                 className="w-full flex items-center gap-4 px-5 py-3.5 rounded-xl transition-all text-left"
                 style={{
-                  background: isActive ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.04)',
-                  border: isActive ? '1px solid rgba(99,102,241,0.3)' : '1px solid rgba(255,255,255,0.06)',
+                  background: isActive ? '#eef2ff' : 'white',
+                  border: isActive ? '1px solid #c7d2fe' : '1px solid #f1f5f9',
+                  boxShadow: isActive ? 'none' : '0 1px 2px rgba(0,0,0,0.04)',
                 }}>
                 <div className="w-20 shrink-0">
-                  <span className="text-sm font-bold" style={{ color: isToday ? '#818cf8' : '#94a3b8' }}>
+                  <span className="text-sm font-bold" style={{ color: isToday ? '#475569' : '#64748b' }}>
                     {DAY_SHORT[i]}
                   </span>
-                  <span className="text-xs ml-2" style={{ color: '#475569' }}>
+                  <span className="text-xs ml-2" style={{ color: '#94a3b8' }}>
                     {wd.getDate()}. {MONTH_NAMES[wd.getMonth()].slice(0, 3)}.
                   </span>
                 </div>
@@ -171,12 +172,12 @@ export default function TagPage() {
                       <span className="text-sm" style={{ color: goalColor(wp.protein_total, goals.protein) }}>
                         {wp.protein_total}g P
                       </span>
-                      <span className="text-sm" style={{ color: '#475569' }}>
+                      <span className="text-sm" style={{ color: '#94a3b8' }}>
                         CHF {Number(wp.cost_total).toFixed(2)}
                       </span>
                     </div>
                     <div className="w-20 shrink-0">
-                      <div className="h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                      <div className="h-1.5 rounded-full" style={{ background: '#f1f5f9' }}>
                         <div className="h-full rounded-full" style={{
                           width: `${Math.min((wp.kcal_total / goals.kcal) * 100, 100)}%`,
                           background: goalColor(wp.kcal_total, goals.kcal),
@@ -185,7 +186,7 @@ export default function TagPage() {
                     </div>
                   </>
                 ) : (
-                  <span className="text-xs" style={{ color: '#334155' }}>Nicht geplant</span>
+                  <span className="text-xs" style={{ color: '#cbd5e1' }}>Nicht geplant</span>
                 )}
               </button>
             )
@@ -196,7 +197,7 @@ export default function TagPage() {
         <>
           {/* Daily summary */}
           {meals.length > 0 && (
-            <div className="rounded-2xl p-5 mb-5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div className="rounded-2xl p-5 mb-5" style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
               <div className="grid grid-cols-3 gap-4">
                 {[
                   { label: 'Kalorien', v: Math.round(totals.kcal),               max: goals.kcal,    display: `${Math.round(totals.kcal)}`, unit: 'kcal' },
@@ -206,11 +207,11 @@ export default function TagPage() {
                   <div key={s.label} className="text-center">
                     <p className="text-2xl font-black" style={{ color: goalColor(s.v, s.max) }}>
                       {s.pre ? `${s.display}` : s.display}
-                      <span className="text-sm font-normal ml-0.5" style={{ color: '#475569' }}>
+                      <span className="text-sm font-normal ml-0.5" style={{ color: '#94a3b8' }}>
                         {s.unit}
                       </span>
                     </p>
-                    <p className="text-xs mt-0.5" style={{ color: '#475569' }}>{s.label}</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>{s.label}</p>
                     {s.max > 0 && (
                       <p className="text-xs mt-0.5 font-semibold" style={{ color: goalColor(s.v, s.max) }}>
                         {Math.round((s.v / s.max) * 100)}%
@@ -224,41 +225,41 @@ export default function TagPage() {
 
           {/* Meal sections */}
           <div className="space-y-3">
-            {MEAL_TYPES.map(({ key, label, gradient, glow }) => {
+            {MEAL_TYPES.map(({ key, label, color, bg, border }) => {
               const sectionMeals = meals.filter(m => m.meal_type === key)
               return (
                 <div key={key} className="rounded-2xl overflow-hidden"
-                  style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-                  {/* Gradient header */}
-                  <div className="flex items-center justify-between px-5 py-3.5" style={{ background: gradient }}>
-                    <span className="text-sm font-bold text-white drop-shadow-sm">{label}</span>
+                  style={{ border: `1px solid ${border}` }}>
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-5 py-3.5" style={{ background: bg }}>
+                    <span className="text-sm font-bold" style={{ color }}>{label}</span>
                     <button onClick={() => setAddingFor(key)}
-                      className="text-xs font-bold text-white px-3 py-1 rounded-lg transition-all"
-                      style={{ background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(4px)' }}>
+                      className="text-xs font-bold px-3 py-1 rounded-lg transition-all"
+                      style={{ background: 'white', color, border: `1px solid ${border}` }}>
                       + Hinzufügen
                     </button>
                   </div>
 
                   {/* Content */}
-                  <div style={{ background: glow }}>
+                  <div style={{ background: 'white' }}>
                     {sectionMeals.length === 0 && (
-                      <p className="px-5 py-3.5 text-xs" style={{ color: '#334155' }}>Noch nichts geplant</p>
+                      <p className="px-5 py-3.5 text-xs" style={{ color: '#cbd5e1' }}>Noch nichts geplant</p>
                     )}
                     {sectionMeals.map(meal => (
-                      <div key={meal.id} className="px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <div key={meal.id} className="px-5 py-4" style={{ borderBottom: '1px solid #f8fafc' }}>
                         <div className="flex items-center justify-between mb-2.5">
-                          <span className="text-sm font-bold text-white">{meal.name}</span>
+                          <span className="text-sm font-bold" style={{ color: '#1e293b' }}>{meal.name}</span>
                           <button onClick={() => deleteMeal(meal.id)}
-                            className="text-xs transition-all" style={{ color: '#475569' }}>Entfernen</button>
+                            className="text-xs transition-all" style={{ color: '#94a3b8' }}>Entfernen</button>
                         </div>
                         <div className="space-y-1.5">
                           {meal.meal_items?.map(item => (
                             <div key={item.id} className="flex items-center justify-between">
-                              <span className="text-xs" style={{ color: '#94a3b8' }}>
+                              <span className="text-xs" style={{ color: '#64748b' }}>
                                 {item.food_name}
-                                <span className="ml-1.5" style={{ color: '#475569' }}>{item.amount}{item.unit}</span>
+                                <span className="ml-1.5" style={{ color: '#94a3b8' }}>{item.amount}{item.unit}</span>
                               </span>
-                              <div className="flex gap-3 text-xs" style={{ color: '#64748b' }}>
+                              <div className="flex gap-3 text-xs" style={{ color: '#94a3b8' }}>
                                 <span>{item.kcal} kcal</span>
                                 <span>{item.protein}g P</span>
                                 <span>CHF {Number(item.cost).toFixed(2)}</span>
@@ -267,7 +268,7 @@ export default function TagPage() {
                           ))}
                         </div>
                         <div className="flex gap-4 mt-2.5 pt-2.5 text-xs font-bold"
-                          style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: '#94a3b8' }}>
+                          style={{ borderTop: '1px solid #f1f5f9', color: '#64748b' }}>
                           <span>{Math.round(meal.kcal_total)} kcal</span>
                           <span>{meal.protein_total}g Protein</span>
                           <span>CHF {Number(meal.cost_total).toFixed(2)}</span>

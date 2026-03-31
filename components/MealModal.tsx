@@ -164,9 +164,9 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
     : null
 
   const inputStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white',
+    background: 'white',
+    border: '1px solid #e2e8f0',
+    color: '#1e293b',
     borderRadius: '0.5rem',
     padding: '0.5rem 0.75rem',
     fontSize: '0.875rem',
@@ -175,9 +175,9 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
   }
 
   const selectStyle: React.CSSProperties = {
-    background: '#1e293b',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white',
+    background: 'white',
+    border: '1px solid #e2e8f0',
+    color: '#1e293b',
     borderRadius: '0.5rem',
     padding: '0.5rem 0.5rem',
     fontSize: '0.875rem',
@@ -187,25 +187,26 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
   return (
     <div
       className="fixed inset-0 flex items-center justify-center z-50 p-4"
-      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}
     >
       <div
         className="w-full max-w-lg max-h-[92vh] overflow-y-auto shadow-xl"
-        style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.75rem' }}
+        style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '0.75rem' }}
       >
 
         {/* Header */}
         <div
           className="flex items-center justify-between px-6 py-4"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+          style={{ borderBottom: '1px solid #f1f5f9' }}
         >
-          <h2 className="font-semibold text-white text-sm">
+          <h2 className="font-semibold text-sm" style={{ color: '#1e293b' }}>
             {MEAL_TYPE_LABELS[mealType]} hinzufügen
           </h2>
           {templates.length > 0 && (
             <button
               onClick={() => setShowTemplates(v => !v)}
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+              className="text-xs font-medium transition-colors"
+              style={{ color: '#475569' }}
             >
               {showTemplates ? 'Schliessen' : 'Vorlage laden'}
             </button>
@@ -216,17 +217,17 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
         {showTemplates && (
           <div
             className="px-6 py-3"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.03)' }}
+            style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
           >
-            <p className="text-xs font-medium mb-2" style={{ color: '#94a3b8' }}>Vorlage auswählen</p>
+            <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>Vorlage auswählen</p>
             <div className="space-y-1">
               {templates.map(t => (
                 <button
                   key={t.id}
                   onClick={() => applyTemplate(t)}
-                  className="w-full text-left px-3 py-2 text-sm text-white rounded-lg transition-colors"
-                  style={{ background: 'transparent' }}
-                  onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)')}
+                  className="w-full text-left px-3 py-2 text-sm rounded-lg transition-colors"
+                  style={{ background: 'transparent', color: '#1e293b' }}
+                  onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#f1f5f9')}
                   onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
                 >
                   {t.name}
@@ -243,7 +244,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
 
           {/* Meal name */}
           <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: '#94a3b8' }}>Name der Mahlzeit</label>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Name der Mahlzeit</label>
             <input
               type="text"
               value={mealName}
@@ -256,9 +257,9 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
           {/* Add ingredient */}
           <div
             className="rounded-lg p-4 space-y-3"
-            style={{ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}
+            style={{ border: '1px solid #f1f5f9', background: '#f8fafc' }}
           >
-            <p className="text-xs font-medium" style={{ color: '#94a3b8' }}>Zutat hinzufügen</p>
+            <p className="text-xs font-medium" style={{ color: '#64748b' }}>Zutat hinzufügen</p>
 
             {/* Search */}
             <div className="relative" ref={searchRef}>
@@ -272,15 +273,15 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
               {searchResults.length > 0 && (
                 <ul
                   className="absolute z-10 top-full left-0 right-0 mt-1 rounded-lg shadow-xl max-h-44 overflow-y-auto"
-                  style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)' }}
+                  style={{ background: 'white', border: '1px solid #e2e8f0' }}
                 >
                   {searchResults.map(food => (
                     <li
                       key={food.id}
                       onMouseDown={() => selectFood(food)}
                       className="px-3 py-2 text-sm cursor-pointer transition-colors"
-                      style={{ color: 'white' }}
-                      onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)')}
+                      style={{ color: '#1e293b' }}
+                      onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#f1f5f9')}
                       onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
                     >
                       <span className="font-medium">{food.name}</span>
@@ -324,7 +325,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                 onClick={addItem}
                 disabled={!selectedFood || !amount}
                 className="text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
-                style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+                style={{ background: '#475569' }}
               >
                 +
               </button>
@@ -334,7 +335,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
             {preview && (
               <div
                 className="text-xs rounded-lg px-3 py-2"
-                style={{ color: '#94a3b8', background: 'rgba(255,255,255,0.04)' }}
+                style={{ color: '#64748b', background: '#f1f5f9' }}
               >
                 {preview.kcal} kcal · {preview.protein}g Protein · CHF {preview.cost.toFixed(2)}
               </div>
@@ -344,19 +345,19 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
           {/* Items list */}
           {items.length > 0 && (
             <div>
-              <p className="text-xs font-medium mb-2" style={{ color: '#94a3b8' }}>Zutaten</p>
+              <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>Zutaten</p>
               <div
                 className="rounded-lg overflow-hidden"
-                style={{ border: '1px solid rgba(255,255,255,0.07)' }}
+                style={{ border: '1px solid #f1f5f9' }}
               >
                 {items.map((item, i) => (
                   <div
                     key={i}
                     className="flex items-center justify-between px-3 py-2"
-                    style={i > 0 ? { borderTop: '1px solid rgba(255,255,255,0.06)' } : {}}
+                    style={i > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium text-white truncate">{item.food_name}</span>
+                      <span className="text-sm font-medium truncate" style={{ color: '#1e293b' }}>{item.food_name}</span>
                       <span className="text-xs shrink-0" style={{ color: '#64748b' }}>{item.amount}{item.unit}</span>
                     </div>
                     <div className="flex items-center gap-3 shrink-0 ml-3">
@@ -377,7 +378,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                 ))}
               </div>
               {/* Totals */}
-              <div className="flex gap-4 mt-2 px-3 text-xs font-semibold" style={{ color: '#94a3b8' }}>
+              <div className="flex gap-4 mt-2 px-3 text-xs font-semibold" style={{ color: '#64748b' }}>
                 <span>{Math.round(totals.kcal)} kcal</span>
                 <span>{totals.protein}g Protein</span>
                 <span>CHF {totals.cost.toFixed(2)}</span>
@@ -387,13 +388,13 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
 
           {/* Save as template */}
           <div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: '#94a3b8' }}>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: '#64748b' }}>
               <input
                 type="checkbox"
                 checked={saveAsTemplate}
                 onChange={e => setSaveAsTemplate(e.target.checked)}
                 className="w-4 h-4 rounded"
-                style={{ accentColor: '#6366f1' }}
+                style={{ accentColor: '#475569' }}
               />
               Als Vorlage speichern
             </label>
@@ -412,12 +413,12 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
         {/* Footer */}
         <div
           className="px-6 py-4 flex justify-end gap-2"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+          style={{ borderTop: '1px solid #f1f5f9', background: '#f8fafc' }}
         >
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm rounded-lg transition-colors"
-            style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.08)' }}
+            style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}
           >
             Abbrechen
           </button>
@@ -428,7 +429,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
             }}
             disabled={!mealName || items.length === 0}
             className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
-            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+            style={{ background: '#475569' }}
           >
             Speichern
           </button>

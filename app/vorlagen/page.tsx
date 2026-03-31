@@ -64,8 +64,8 @@ export default function VorlagenPage() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-lg font-semibold text-white">Vorlagen</h1>
-        <p className="text-xs mt-1" style={{ color: '#64748b' }}>Vorlagen werden beim Hinzufügen einer Mahlzeit gespeichert.</p>
+        <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Vorlagen</h1>
+        <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>Vorlagen werden beim Hinzufügen einer Mahlzeit gespeichert.</p>
       </div>
 
       {loading && <div className="text-center py-10 text-sm" style={{ color: '#64748b' }}>Laden…</div>}
@@ -73,7 +73,7 @@ export default function VorlagenPage() {
       {!loading && templates.length === 0 && (
         <div
           className="p-10 text-center text-sm rounded-2xl"
-          style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)', color: '#64748b' }}
+          style={{ background: 'white', border: '1px solid #f1f5f9', color: '#94a3b8', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
         >
           Noch keine Vorlagen vorhanden.<br />
           <span className="text-xs">Beim Hinzufügen einer Mahlzeit kannst du sie als Vorlage speichern.</span>
@@ -85,7 +85,7 @@ export default function VorlagenPage() {
         if (!list.length) return null
         return (
           <div key={type} className="mb-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748b' }}>
+            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94a3b8' }}>
               {MEAL_TYPE_LABELS[type]}
             </h2>
             <div className="space-y-3">
@@ -98,16 +98,16 @@ export default function VorlagenPage() {
                   <div
                     key={template.id}
                     className="p-5 rounded-2xl"
-                    style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}
+                    style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
                   >
                     <div className="flex items-start justify-between mb-3">
-                      <span className="font-semibold text-sm text-white">{template.name}</span>
+                      <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{template.name}</span>
                       <button
                         onClick={() => remove(template.id)}
                         className="text-xs ml-4 transition-colors"
-                        style={{ color: '#f87171' }}
-                        onMouseEnter={e => ((e.target as HTMLElement).style.color = '#ef4444')}
-                        onMouseLeave={e => ((e.target as HTMLElement).style.color = '#f87171')}
+                        style={{ color: '#dc2626' }}
+                        onMouseEnter={e => ((e.target as HTMLElement).style.color = '#b91c1c')}
+                        onMouseLeave={e => ((e.target as HTMLElement).style.color = '#dc2626')}
                       >
                         Löschen
                       </button>
@@ -131,7 +131,7 @@ export default function VorlagenPage() {
                     {items.length > 0 && (
                       <div
                         className="pt-2.5 flex gap-4 text-xs font-medium"
-                        style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: '#94a3b8' }}
+                        style={{ borderTop: '1px solid #f1f5f9', color: '#64748b' }}
                       >
                         <span>{Math.round(totals.kcal)} kcal</span>
                         <span>{totals.protein}g Protein</span>

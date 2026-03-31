@@ -39,9 +39,9 @@ export default function EinstellungenPage() {
 
   const inputStyle: React.CSSProperties = {
     width: '6rem',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white',
+    background: 'white',
+    border: '1px solid #e2e8f0',
+    color: '#1e293b',
     borderRadius: '0.5rem',
     padding: '0.5rem 0.75rem',
     fontSize: '0.875rem',
@@ -52,8 +52,8 @@ export default function EinstellungenPage() {
   return (
     <div className="max-w-lg mx-auto">
       <div className="mb-7">
-        <h1 className="text-lg font-semibold text-white">Einstellungen</h1>
-        <p className="text-xs mt-1" style={{ color: '#64748b' }}>
+        <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Einstellungen</h1>
+        <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
           Ziele für Kalorien, Protein und Kosten — steuern die Farbanzeigen im Dashboard und Kalender.
         </p>
       </div>
@@ -61,24 +61,24 @@ export default function EinstellungenPage() {
       {/* Goal section */}
       <div
         className="rounded-2xl overflow-hidden mb-5"
-        style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}
+        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
       >
         <div
           className="px-5 py-3.5"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.04)' }}
+          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
         >
-          <h2 className="text-sm font-semibold text-white">Tagesziele</h2>
+          <h2 className="text-sm font-semibold" style={{ color: '#1e293b' }}>Tagesziele</h2>
         </div>
         <div>
           {FIELDS.map((f, idx) => (
             <div
               key={f.key}
               className="px-5 py-4 flex items-center gap-4"
-              style={idx > 0 ? { borderTop: '1px solid rgba(255,255,255,0.06)' } : {}}
+              style={idx > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}
             >
               <div className="flex-1">
-                <label className="block text-sm font-medium text-white">{f.label}</label>
-                <p className="text-xs mt-0.5" style={{ color: '#64748b' }}>{f.description}</p>
+                <label className="block text-sm font-medium" style={{ color: '#1e293b' }}>{f.label}</label>
+                <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>{f.description}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <input
@@ -99,9 +99,9 @@ export default function EinstellungenPage() {
       {/* Color legend */}
       <div
         className="rounded-2xl p-5 mb-5"
-        style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}
+        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
       >
-        <h2 className="text-sm font-semibold text-white mb-3">Farbskala</h2>
+        <h2 className="text-sm font-semibold mb-3" style={{ color: '#1e293b' }}>Farbskala</h2>
         <div className="space-y-2">
           {[
             { color: 'bg-green-500',  label: 'Grün',   desc: '≥ 100% des Ziels erreicht' },
@@ -110,7 +110,7 @@ export default function EinstellungenPage() {
           ].map(item => (
             <div key={item.label} className="flex items-center gap-3">
               <div className={`w-3 h-3 rounded-full ${item.color}`} />
-              <span className="text-xs font-medium text-white w-12">{item.label}</span>
+              <span className="text-xs font-medium w-12" style={{ color: '#1e293b' }}>{item.label}</span>
               <span className="text-xs" style={{ color: '#94a3b8' }}>{item.desc}</span>
             </div>
           ))}
@@ -121,7 +121,7 @@ export default function EinstellungenPage() {
       <button
         onClick={handleSave}
         className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all"
-        style={saved ? { background: '#16a34a' } : { background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+        style={saved ? { background: '#16a34a' } : { background: '#475569' }}
       >
         {saved ? 'Gespeichert ✓' : 'Speichern'}
       </button>
