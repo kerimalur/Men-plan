@@ -37,6 +37,8 @@ export default function TagPage() {
   const [loading, setLoading]     = useState(true)
   const [addingFor, setAddingFor] = useState<string | null>(null)
   const [goals, setGoals]         = useState({ kcal: 2000, protein: 150 })
+  const [editingItemId, setEditingItemId]       = useState<string | null>(null)
+  const [editingItemAmount, setEditingItemAmount] = useState('')
 
   const dateObj       = new Date(datum + 'T12:00:00')
   const todayStr      = toDateStr(new Date())
@@ -119,6 +121,29 @@ export default function TagPage() {
       m.id === meal.id
         ? { ...m, kcal_total: mealTotals.kcal, protein_total: mealTotals.protein, cost_total: mealTotals.cost }
         : m
+    )
+    if (plan) await recalc(plan.id, updatedMeals)
+    await loadData()
+  }
+
+  async function updateItemAmount(meal: Meal, item: MealItem, newAmt: number) {
+    setEditingItemId(null)
+    if (newAmt <= 0 || newAmt === item.amount) return
+    const ratio = newAmt / item.amount
+    const newKcal    = Math.round(item.kcal    * ratio * 100)  / 100
+    const newProtein = Math.round(item.protein * ratio * 1000) / 1000
+    const newCost    = Math.round(item.cost    * ratio * 10000) / 10000
+    await supabase.from('meal_items').update({ amount: newAmt, kcal: newKcal, protein: newProtein, cost: newCost }).eq('id', item.id)
+    const newItems = meal.meal_items.map(i =>
+      i.id === item.id ? { ...i, amount: newAmt, kcal: newKcal, protein: newProtein, cost: newCost } : i
+    )
+    const mealTotals = newItems.reduce(
+      (acc, i) => ({ kcal: acc.kcal + i.kcal, protein: acc.protein + i.protein, cost: acc.cost + i.cost }),
+      { kcal: 0, protein: 0, cost: 0 }
+    )
+    await supabase.from('meals').update({ kcal_total: mealTotals.kcal, protein_total: mealTotals.protein, cost_total: mealTotals.cost }).eq('id', meal.id)
+    const updatedMeals = meals.map(m =>
+      m.id === meal.id ? { ...m, kcal_total: mealTotals.kcal, protein_total: mealTotals.protein, cost_total: mealTotals.cost } : m
     )
     if (plan) await recalc(plan.id, updatedMeals)
     await loadData()
@@ -323,7 +348,30 @@ export default function TagPage() {
                             <div key={item.id} className="flex items-center justify-between group">
                               <span className="text-xs" style={{ color: '#64748b' }}>
                                 {item.food_name}
-                                <span className="ml-1.5" style={{ color: '#94a3b8' }}>{item.amount}{item.unit}</span>
+                                {editingItemId === item.id ? (
+                                  <input
+                                    autoFocus
+                                    type="number"
+                                    min="0.1"
+                                    step="any"
+                                    value={editingItemAmount}
+                                    onChange={e => setEditingItemAmount(e.target.value)}
+                                    onBlur={() => updateItemAmount(meal, item, parseFloat(editingItemAmount) || item.amount)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') updateItemAmount(meal, item, parseFloat(editingItemAmount) || item.amount)
+                                      if (e.key === 'Escape') setEditingItemId(null)
+                                    }}
+                                    className="ml-1.5 w-16 text-xs rounded px-1 py-0.5"
+                                    style={{ border: '1px solid #c7d2fe', color: '#4f46e5', background: '#eef2ff', outline: 'none' }}
+                                  />
+                                ) : (
+                                  <span
+                                    className="ml-1.5 cursor-pointer rounded px-1 py-0.5 transition-colors"
+                                    style={{ color: '#94a3b8' }}
+                                    title="Menge bearbeiten"
+                                    onClick={() => { setEditingItemId(item.id); setEditingItemAmount(String(item.amount)) }}
+                                  >{item.amount}{item.unit}</span>
+                                )}
                               </span>
                               <div className="flex gap-3 items-center text-xs" style={{ color: '#94a3b8' }}>
                                 <span>{item.kcal} kcal</span>

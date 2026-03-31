@@ -55,6 +55,8 @@ function TemplateEditModal({ template, onClose, onSaved }: {
   const [amount, setAmount] = useState('')
   const [unit, setUnit] = useState('g')
   const [saving, setSaving] = useState(false)
+  const [editingLocalId, setEditingLocalId]       = useState<string | null>(null)
+  const [editingAmt, setEditingAmt] = useState('')
   const searchRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -171,7 +173,38 @@ function TemplateEditModal({ template, onClose, onSaved }: {
                     style={i > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}>
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm font-medium truncate" style={{ color: '#1e293b' }}>{item.food_name}</span>
-                      <span className="text-xs shrink-0" style={{ color: '#64748b' }}>{item.amount}{item.unit}</span>
+                      {editingLocalId === item.localId ? (
+                        <input
+                          autoFocus
+                          type="number"
+                          min="0.1"
+                          step="any"
+                          value={editingAmt}
+                          onChange={e => setEditingAmt(e.target.value)}
+                          onBlur={() => {
+                            const v = parseFloat(editingAmt)
+                            if (v > 0) setItems(prev => prev.map(x => x.localId === item.localId ? { ...x, amount: v } : x))
+                            setEditingLocalId(null)
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              const v = parseFloat(editingAmt)
+                              if (v > 0) setItems(prev => prev.map(x => x.localId === item.localId ? { ...x, amount: v } : x))
+                              setEditingLocalId(null)
+                            }
+                            if (e.key === 'Escape') setEditingLocalId(null)
+                          }}
+                          className="w-16 text-xs rounded px-1 py-0.5"
+                          style={{ border: '1px solid #c7d2fe', color: '#4f46e5', background: '#eef2ff', outline: 'none' }}
+                        />
+                      ) : (
+                        <span
+                          className="text-xs shrink-0 cursor-pointer rounded px-1 py-0.5 transition-colors"
+                          style={{ color: '#64748b' }}
+                          title="Menge bearbeiten"
+                          onClick={() => { setEditingLocalId(item.localId); setEditingAmt(String(item.amount)) }}
+                        >{item.amount}{item.unit}</span>
+                      )}
                     </div>
                     <button onClick={() => setItems(prev => prev.filter(x => x.localId !== item.localId))}
                       className="text-base leading-none ml-3 transition-colors" style={{ color: '#94a3b8' }}

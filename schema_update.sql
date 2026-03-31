@@ -46,3 +46,17 @@ ALTER TABLE meal_template_items ADD CONSTRAINT meal_template_items_unit_check CH
 -- meal_items.unit: + 'stk'
 ALTER TABLE meal_items DROP CONSTRAINT IF EXISTS meal_items_unit_check;
 ALTER TABLE meal_items ADD CONSTRAINT meal_items_unit_check CHECK (unit IN ('g', 'ml', 'dl', 'l', 'stk'));
+
+-- ============================================================
+-- Import-Funktion: Eindeutiger Name in foods (Upsert-Voraussetzung)
+-- ============================================================
+
+-- Doppelte Namen zuerst bereinigen (behält jeweils den ältesten Eintrag)
+DELETE FROM foods f1
+USING foods f2
+WHERE f1.name = f2.name
+  AND f1.created_at > f2.created_at;
+
+-- Eindeutigkeits-Constraint für Upsert ON CONFLICT (name)
+ALTER TABLE foods DROP CONSTRAINT IF EXISTS foods_name_unique;
+ALTER TABLE foods ADD CONSTRAINT foods_name_unique UNIQUE (name);
