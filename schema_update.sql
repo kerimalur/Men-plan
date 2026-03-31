@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS day_markers (
 ALTER TABLE settings    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE day_markers ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "allow_all" ON settings;
+DROP POLICY IF EXISTS "allow_all" ON day_markers;
 CREATE POLICY "allow_all" ON settings    FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON day_markers FOR ALL TO anon USING (true) WITH CHECK (true);
 
