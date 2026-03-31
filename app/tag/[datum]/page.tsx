@@ -103,6 +103,27 @@ export default function TagPage() {
     await loadData()
   }
 
+  async function deleteItem(meal: Meal, itemId: string) {
+    await supabase.from('meal_items').delete().eq('id', itemId)
+    const remainingItems = meal.meal_items.filter(i => i.id !== itemId)
+    const mealTotals = remainingItems.reduce(
+      (acc, i) => ({ kcal: acc.kcal + i.kcal, protein: acc.protein + i.protein, cost: acc.cost + i.cost }),
+      { kcal: 0, protein: 0, cost: 0 }
+    )
+    await supabase.from('meals').update({
+      kcal_total: mealTotals.kcal,
+      protein_total: mealTotals.protein,
+      cost_total: mealTotals.cost,
+    }).eq('id', meal.id)
+    const updatedMeals = meals.map(m =>
+      m.id === meal.id
+        ? { ...m, kcal_total: mealTotals.kcal, protein_total: mealTotals.protein, cost_total: mealTotals.cost }
+        : m
+    )
+    if (plan) await recalc(plan.id, updatedMeals)
+    await loadData()
+  }
+
   function navDay(offset: number) {
     const d = new Date(datum + 'T12:00:00'); d.setDate(d.getDate() + offset)
     router.push(`/tag/${toDateStr(d)}`)
@@ -143,54 +164,99 @@ export default function TagPage() {
         <div className="text-center py-12 text-sm" style={{ color: '#94a3b8' }}>Laden…</div>
       ) : view === 'woche' ? (
         // ── Week view ─────────────────────────────────────────
-        <div className="space-y-2">
-          {weekDays.map((wd, i) => {
-            const ds = toDateStr(wd), wp = weekPlans.find(p => p.date === ds)
-            const isActive = ds === datum, isToday = ds === todayStr
+        <div>
+          {/* Weekly summary */}
+          {weekPlans.length > 0 && (() => {
+            const filled = weekPlans.filter(p => p.kcal_total > 0)
+            const wKcal = filled.reduce((s, p) => s + p.kcal_total, 0)
+            const wProtein = filled.reduce((s, p) => s + p.protein_total, 0)
+            const wCost = filled.reduce((s, p) => s + p.cost_total, 0)
+            const avgKcal = filled.length > 0 ? wKcal / filled.length : 0
             return (
-              <button key={i} onClick={() => { router.push(`/tag/${ds}`); setView('tag') }}
-                className="w-full flex items-center gap-4 px-5 py-3.5 rounded-xl transition-all text-left"
-                style={{
-                  background: isActive ? '#eef2ff' : 'white',
-                  border: isActive ? '1px solid #c7d2fe' : '1px solid #f1f5f9',
-                  boxShadow: isActive ? 'none' : '0 1px 2px rgba(0,0,0,0.04)',
-                }}>
-                <div className="w-20 shrink-0">
-                  <span className="text-sm font-bold" style={{ color: isToday ? '#475569' : '#64748b' }}>
-                    {DAY_SHORT[i]}
-                  </span>
-                  <span className="text-xs ml-2" style={{ color: '#94a3b8' }}>
-                    {wd.getDate()}. {MONTH_NAMES[wd.getMonth()].slice(0, 3)}.
-                  </span>
+              <div className="rounded-2xl p-4 mb-4"
+                style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94a3b8' }}>
+                  Woche · {filled.length} von 7 Tagen geplant
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Ø Kalorien/Tag', v: Math.round(avgKcal), unit: 'kcal', max: goals.kcal, color: goalColor(avgKcal, goals.kcal) },
+                    { label: 'Protein gesamt', v: Math.round(wProtein * 10) / 10, unit: 'g', max: 0, color: '#475569' },
+                    { label: 'Kosten gesamt', v: wCost.toFixed(2), unit: 'CHF', max: 0, color: '#475569', pre: true },
+                  ].map(s => (
+                    <div key={s.label} className="text-center">
+                      <p className="text-lg font-black" style={{ color: s.color }}>
+                        {s.pre ? s.v : s.v}
+                        <span className="text-xs font-normal ml-0.5" style={{ color: '#94a3b8' }}>{s.unit}</span>
+                      </p>
+                      <p className="text-[10px] mt-0.5" style={{ color: '#94a3b8' }}>{s.label}</p>
+                    </div>
+                  ))}
                 </div>
-                {wp ? (
-                  <>
-                    <div className="flex gap-4 flex-1">
-                      <span className="text-sm font-bold" style={{ color: goalColor(wp.kcal_total, goals.kcal) }}>
-                        {Math.round(wp.kcal_total)} kcal
-                      </span>
-                      <span className="text-sm" style={{ color: goalColor(wp.protein_total, goals.protein) }}>
-                        {wp.protein_total}g P
-                      </span>
-                      <span className="text-sm" style={{ color: '#94a3b8' }}>
-                        CHF {Number(wp.cost_total).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="w-20 shrink-0">
-                      <div className="h-1.5 rounded-full" style={{ background: '#f1f5f9' }}>
-                        <div className="h-full rounded-full" style={{
-                          width: `${Math.min((wp.kcal_total / goals.kcal) * 100, 100)}%`,
-                          background: goalColor(wp.kcal_total, goals.kcal),
-                        }} />
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <span className="text-xs" style={{ color: '#cbd5e1' }}>Nicht geplant</span>
-                )}
-              </button>
+              </div>
             )
-          })}
+          })()}
+
+          {/* Day rows */}
+          <div className="space-y-2">
+            {weekDays.map((wd, i) => {
+              const ds = toDateStr(wd), wp = weekPlans.find(p => p.date === ds)
+              const isActive = ds === datum, isToday = ds === todayStr
+              const pct = wp ? Math.min((wp.kcal_total / goals.kcal) * 100, 100) : 0
+              const barColor = wp ? goalColor(wp.kcal_total, goals.kcal) : '#e2e8f0'
+              return (
+                <button key={i} onClick={() => { router.push(`/tag/${ds}`); setView('tag') }}
+                  className="w-full rounded-xl transition-all text-left overflow-hidden"
+                  style={{
+                    background: isActive ? '#eef2ff' : 'white',
+                    border: isActive ? '1.5px solid #c7d2fe' : '1px solid #f1f5f9',
+                    boxShadow: isActive ? 'none' : '0 1px 2px rgba(0,0,0,0.04)',
+                  }}>
+                  <div className="flex items-center gap-4 px-4 py-3">
+                    {/* Day label */}
+                    <div className="w-24 shrink-0">
+                      <span className="text-sm font-bold" style={{ color: isToday ? '#475569' : '#1e293b' }}>
+                        {DAY_LONG[i]}
+                      </span>
+                      <span className="text-xs block mt-0.5" style={{ color: '#94a3b8' }}>
+                        {wd.getDate()}. {MONTH_NAMES[wd.getMonth()].slice(0, 3)}.
+                      </span>
+                    </div>
+                    {wp ? (
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-sm font-bold" style={{ color: goalColor(wp.kcal_total, goals.kcal) }}>
+                            {Math.round(wp.kcal_total)} kcal
+                          </span>
+                          <div className="flex gap-3 text-xs" style={{ color: '#64748b' }}>
+                            <span>{Math.round(wp.protein_total * 10) / 10}g P</span>
+                            <span style={{ color: '#94a3b8' }}>CHF {Number(wp.cost_total).toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 rounded-full" style={{ background: '#f1f5f9' }}>
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span className="text-[10px]" style={{ color: '#94a3b8' }}>
+                            {Math.round(pct)}% des Ziels
+                          </span>
+                          <span className="text-[10px]" style={{ color: '#94a3b8' }}>
+                            Ziel: {goals.kcal} kcal
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1">
+                        <span className="text-xs" style={{ color: '#cbd5e1' }}>Nicht geplant</span>
+                        <div className="h-1.5 rounded-full mt-2" style={{ background: '#f1f5f9' }} />
+                      </div>
+                    )}
+                    <div className="shrink-0 w-5 text-center text-xs" style={{ color: '#c7d2fe' }}>›</div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
         </div>
       ) : (
         // ── Day view ──────────────────────────────────────────
@@ -254,15 +320,21 @@ export default function TagPage() {
                         </div>
                         <div className="space-y-1.5">
                           {meal.meal_items?.map(item => (
-                            <div key={item.id} className="flex items-center justify-between">
+                            <div key={item.id} className="flex items-center justify-between group">
                               <span className="text-xs" style={{ color: '#64748b' }}>
                                 {item.food_name}
                                 <span className="ml-1.5" style={{ color: '#94a3b8' }}>{item.amount}{item.unit}</span>
                               </span>
-                              <div className="flex gap-3 text-xs" style={{ color: '#94a3b8' }}>
+                              <div className="flex gap-3 items-center text-xs" style={{ color: '#94a3b8' }}>
                                 <span>{item.kcal} kcal</span>
                                 <span>{item.protein}g P</span>
                                 <span>CHF {Number(item.cost).toFixed(2)}</span>
+                                <button
+                                  onClick={() => deleteItem(meal, item.id)}
+                                  className="text-sm leading-none opacity-30 hover:opacity-100 transition-opacity ml-1"
+                                  style={{ color: '#dc2626' }}
+                                  title="Zutat entfernen"
+                                >×</button>
                               </div>
                             </div>
                           ))}

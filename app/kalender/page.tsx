@@ -33,26 +33,136 @@ function tileStyle(plan: Plan | undefined, goals: Goals, isToday: boolean, isPas
   return { background: '#fef2f2', border: '1px solid #fecaca' }
 }
 
+function buildExportHtml(
+  title: string,
+  rows: { label: string; dateStr: string; plan?: Plan; marker?: Marker }[],
+  goals: Goals
+) {
+  const filled = rows.filter(r => r.plan && r.plan.kcal_total > 0)
+  const totalKcal = filled.reduce((s, r) => s + (r.plan?.kcal_total ?? 0), 0)
+  const totalProtein = filled.reduce((s, r) => s + (r.plan?.protein_total ?? 0), 0)
+  const totalCost = filled.reduce((s, r) => s + (r.plan?.cost_total ?? 0), 0)
+  const avgKcal = filled.length ? totalKcal / filled.length : 0
+
+  function kcalColor(v: number) {
+    if (!v) return '#94a3b8'
+    const pct = v / goals.kcal
+    if (pct >= 0.95) return '#16a34a'
+    if (pct >= 0.6)  return '#d97706'
+    return '#dc2626'
+  }
+
+  const rowsHtml = rows.map(({ label, plan, marker }) => {
+    const v = plan?.kcal_total ?? 0
+    const pct = v ? Math.min((v / goals.kcal) * 100, 100) : 0
+    const barW = Math.round(pct)
+    const color = kcalColor(v)
+    const badges = [
+      marker?.training   ? '<span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:99px;font-size:11px;margin-right:4px">🏋️ Training</span>' : '',
+      marker?.eingeladen ? '<span style="background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:99px;font-size:11px">🍽 Eingeladen</span>' : '',
+    ].join('')
+    return `
+    <tr>
+      <td style="padding:12px 16px;border-bottom:1px solid #f1f5f9;vertical-align:middle">
+        <div style="font-weight:600;font-size:13px;color:#1e293b">${label}</div>
+        ${badges ? `<div style="margin-top:4px">${badges}</div>` : ''}
+      </td>
+      <td style="padding:12px 16px;border-bottom:1px solid #f1f5f9;text-align:right;vertical-align:middle">
+        ${v ? `<span style="font-weight:700;color:${color};font-size:14px">${Math.round(v)}</span><span style="color:#94a3b8;font-size:12px"> kcal</span>` : '<span style="color:#cbd5e1;font-size:12px">–</span>'}
+      </td>
+      <td style="padding:12px 16px;border-bottom:1px solid #f1f5f9;text-align:right;vertical-align:middle;color:#475569;font-size:13px">
+        ${plan ? `${Math.round((plan.protein_total ?? 0) * 10) / 10}g` : '–'}
+      </td>
+      <td style="padding:12px 16px;border-bottom:1px solid #f1f5f9;text-align:right;vertical-align:middle;color:#475569;font-size:13px">
+        ${plan ? `CHF ${Number(plan.cost_total).toFixed(2)}` : '–'}
+      </td>
+      <td style="padding:12px 16px;border-bottom:1px solid #f1f5f9;vertical-align:middle;width:100px">
+        ${v ? `
+        <div style="background:#f1f5f9;border-radius:99px;height:6px">
+          <div style="background:${color};border-radius:99px;height:6px;width:${barW}%"></div>
+        </div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:3px;text-align:right">${Math.round(pct)}%</div>
+        ` : ''}
+      </td>
+    </tr>`
+  }).join('')
+
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0 }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem }
+  .card { background: white; border-radius: 16px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); overflow: hidden }
+  .header { background: linear-gradient(135deg, #475569 0%, #334155 100%); padding: 24px 28px; color: white }
+  .header h1 { font-size: 18px; font-weight: 800; margin-bottom: 4px }
+  .header p { font-size: 13px; opacity: 0.75 }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-bottom: 1px solid #f1f5f9 }
+  .stat { padding: 16px 20px; text-align: center; border-right: 1px solid #f1f5f9 }
+  .stat:last-child { border-right: none }
+  .stat-value { font-size: 22px; font-weight: 800; color: #1e293b }
+  .stat-label { font-size: 11px; color: #94a3b8; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em }
+  table { width: 100%; border-collapse: collapse }
+  thead th { background: #f8fafc; padding: 10px 16px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #94a3b8; text-align: left; border-bottom: 2px solid #e2e8f0 }
+  thead th:not(:first-child) { text-align: right }
+  @media print { body { padding: 0.5rem; background: white } .card { box-shadow: none } }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <h1>${title}</h1>
+    <p>${filled.length} von ${rows.length} Tagen mit Daten · Ziel: ${goals.kcal} kcal / ${goals.protein}g Protein</p>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="stat-value">${Math.round(avgKcal)}<span style="font-size:13px;font-weight:400;color:#94a3b8"> kcal</span></div><div class="stat-label">Ø Kalorien/Tag</div></div>
+    <div class="stat"><div class="stat-value">${Math.round(totalProtein * 10) / 10}<span style="font-size:13px;font-weight:400;color:#94a3b8"> g</span></div><div class="stat-label">Protein gesamt</div></div>
+    <div class="stat"><div class="stat-value">CHF ${totalCost.toFixed(2)}</div><div class="stat-label">Kosten gesamt</div></div>
+    <div class="stat"><div class="stat-value">${filled.length}/${rows.length}</div><div class="stat-label">Tage geplant</div></div>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Tag</th><th style="text-align:right">Kalorien</th><th style="text-align:right">Protein</th><th style="text-align:right">Kosten</th><th style="text-align:right">Fortschritt</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+</div>
+<script>window.print()</script>
+</body></html>`
+}
+
 function exportWeek(days: Date[], plans: Plan[], markers: Marker[], goals: Goals) {
-  const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Wochenexport</title>
-<style>body{font-family:sans-serif;padding:2rem;background:#fff;color:#111}h1{font-size:1.1rem;margin-bottom:1.5rem}
-table{width:100%;border-collapse:collapse;font-size:.85rem}th{text-align:left;padding:8px 12px;background:#f8fafc;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em}
-td{padding:10px 12px;border-bottom:1px solid #f1f5f9}
-.green{color:#16a34a;font-weight:600}.amber{color:#d97706;font-weight:600}.red{color:#dc2626;font-weight:600}
-.badge{font-size:.65rem;padding:2px 7px;border-radius:99px;margin-left:4px}
-.tr{background:#dbeafe;color:#1d4ed8}.ei{background:#ede9fe;color:#6d28d9}</style></head><body>
-<h1>Wochenübersicht · ${days[0].toLocaleDateString('de-CH',{day:'numeric',month:'long'})} – ${days[6].toLocaleDateString('de-CH',{day:'numeric',month:'long',year:'numeric'})}</h1>
-<table><thead><tr><th>Tag</th><th>Kalorien</th><th>Protein</th><th>Kosten</th><th></th></tr></thead><tbody>
-${days.map(d => {
-  const ds = toDateStr(d); const p = plans.find(x => x.date === ds); const m = markers.find(x => x.date === ds)
-  const pct = p ? p.kcal_total / goals.kcal : 0
-  const cls = pct >= 1 ? 'green' : pct >= 0.8 ? 'amber' : p ? 'red' : ''
-  return `<tr><td><strong>${DAY_LONG[(d.getDay()+6)%7]}</strong>, ${d.getDate()}. ${MONTH_NAMES[d.getMonth()]}</td>
-<td class="${cls}">${p ? Math.round(p.kcal_total)+' kcal' : '–'}</td>
-<td>${p ? p.protein_total+'g' : '–'}</td><td>${p ? 'CHF '+Number(p.cost_total).toFixed(2) : '–'}</td>
-<td>${m?.training?'<span class="badge tr">Training</span>':''}${m?.eingeladen?'<span class="badge ei">Eingeladen</span>':''}</td></tr>`
-}).join('')}
-</tbody></table><script>window.print()</script></body></html>`
+  const title = `Wochenübersicht · ${days[0].toLocaleDateString('de-CH', { day: 'numeric', month: 'long' })} – ${days[6].toLocaleDateString('de-CH', { day: 'numeric', month: 'long', year: 'numeric' })}`
+  const rows = days.map(d => {
+    const ds = toDateStr(d)
+    return {
+      label: `${DAY_LONG[(d.getDay() + 6) % 7]}, ${d.getDate()}. ${MONTH_NAMES[d.getMonth()]}`,
+      dateStr: ds,
+      plan: plans.find(p => p.date === ds),
+      marker: markers.find(m => m.date === ds),
+    }
+  })
+  const html = buildExportHtml(title, rows, goals)
+  const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close() }
+}
+
+function exportMonth(year: number, month: number, plans: Plan[], markers: Marker[], goals: Goals) {
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const days = Array.from({ length: lastDay }, (_, i) => new Date(year, month, i + 1))
+  const monthName = MONTH_NAMES[month]
+  const title = `Monatsübersicht · ${monthName} ${year}`
+  const rows = days.map(d => {
+    const ds = toDateStr(d)
+    return {
+      label: `${DAY_SHORT[(d.getDay() + 6) % 7]} ${d.getDate()}. ${monthName}`,
+      dateStr: ds,
+      plan: plans.find(p => p.date === ds),
+      marker: markers.find(m => m.date === ds),
+    }
+  })
+  const html = buildExportHtml(title, rows, goals)
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close() }
 }
 
@@ -175,11 +285,21 @@ export default function KalenderPage() {
   const [markers, setMarkers] = useState<Marker[]>([])
   const [goals, setGoals]     = useState<Goals>({ kcal: 2000, protein: 150 })
   const [popup, setPopup]     = useState<string | null>(null)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
 
   const today = new Date(), todayStr = toDateStr(today)
   const year  = anchor.getFullYear(), month = anchor.getMonth()
 
   useEffect(() => { loadAll() }, [year, month])
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setShowExportMenu(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   async function loadAll() {
     const start = toDateStr(new Date(year, month, 1))
@@ -208,14 +328,45 @@ export default function KalenderPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-lg font-bold" style={{ color: '#1e293b' }}>Kalender</h1>
-        <button onClick={() => exportWeek(thisWeek, plans, markers, goals)}
-          className="no-print flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl transition-all"
-          style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          Woche exportieren
-        </button>
+        <div className="relative" ref={exportRef}>
+          <button
+            onClick={() => setShowExportMenu(v => !v)}
+            className="no-print flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl transition-all"
+            style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Exportieren ▾
+          </button>
+          {showExportMenu && (
+            <div className="absolute right-0 top-full mt-1 w-48 rounded-xl shadow-xl z-50 overflow-hidden"
+              style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+              <button
+                onClick={() => { exportWeek(thisWeek, plans, markers, goals); setShowExportMenu(false) }}
+                className="w-full text-left px-4 py-3 text-sm transition-colors"
+                style={{ color: '#1e293b' }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#f8fafc')}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}>
+                <span className="font-medium">Aktuelle Woche</span>
+                <span className="block text-xs mt-0.5" style={{ color: '#94a3b8' }}>
+                  {thisWeek[0].getDate()}.–{thisWeek[6].getDate()}. {MONTH_NAMES[thisWeek[6].getMonth()]}
+                </span>
+              </button>
+              <div style={{ borderTop: '1px solid #f1f5f9' }} />
+              <button
+                onClick={() => { exportMonth(year, month, plans, markers, goals); setShowExportMenu(false) }}
+                className="w-full text-left px-4 py-3 text-sm transition-colors"
+                style={{ color: '#1e293b' }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#f8fafc')}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}>
+                <span className="font-medium">Aktueller Monat</span>
+                <span className="block text-xs mt-0.5" style={{ color: '#94a3b8' }}>
+                  {MONTH_NAMES[month]} {year}
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Legend */}
