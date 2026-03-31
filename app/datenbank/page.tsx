@@ -87,12 +87,37 @@ export default function DatenbankPage() {
 
   const f = (v: string, field: keyof FoodForm) => setForm(prev => ({ ...prev, [field]: v }))
 
+  const inputStyle: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'white',
+    borderRadius: '0.5rem',
+    padding: '0.5rem 0.75rem',
+    fontSize: '0.875rem',
+    outline: 'none',
+    width: '100%',
+  }
+
+  const selectStyle: React.CSSProperties = {
+    background: '#1e293b',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'white',
+    borderRadius: '0.5rem',
+    padding: '0.5rem 0.75rem',
+    fontSize: '0.875rem',
+    outline: 'none',
+    width: '100%',
+  }
+
   return (
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-gray-900">Lebensmittel-Datenbank</h1>
-        <button onClick={openAdd}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+        <h1 className="text-lg font-semibold text-white">Lebensmittel-Datenbank</h1>
+        <button
+          onClick={openAdd}
+          style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+          className="text-white px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+        >
           + Hinzufügen
         </button>
       </div>
@@ -103,40 +128,52 @@ export default function DatenbankPage() {
         value={search}
         onChange={e => setSearch(e.target.value)}
         placeholder="Suchen…"
-        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+        style={{
+          ...inputStyle,
+          marginBottom: '1rem',
+        }}
       />
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '1rem', overflow: 'hidden' }}>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50/50">
-              <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">kcal</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Protein</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">CHF</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">je</th>
+            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.04)' }}>
+              <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>Name</th>
+              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>kcal</th>
+              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>Protein</th>
+              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>CHF</th>
+              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#64748b' }}>je</th>
               <th className="px-4 py-3 w-28"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody>
             {foods.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-sm text-gray-400">
+                <td colSpan={6} className="px-5 py-10 text-center text-sm" style={{ color: '#64748b' }}>
                   {search ? 'Keine Ergebnisse.' : 'Noch keine Lebensmittel eingetragen.'}
                 </td>
               </tr>
             )}
             {foods.map(food => (
-              <tr key={food.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-5 py-3 font-medium text-gray-900">{food.name}</td>
-                <td className="px-4 py-3 text-right text-gray-600">{food.calories_per_100}</td>
-                <td className="px-4 py-3 text-right text-gray-600">{food.protein_per_100}g</td>
-                <td className="px-4 py-3 text-right text-gray-600">{Number(food.cost_per_100).toFixed(2)}</td>
-                <td className="px-4 py-3 text-right text-gray-400 text-xs">100{food.unit}</td>
+              <tr
+                key={food.id}
+                style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                className="transition-colors"
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <td className="px-5 py-3 font-medium text-white">{food.name}</td>
+                <td className="px-4 py-3 text-right" style={{ color: '#94a3b8' }}>{food.calories_per_100}</td>
+                <td className="px-4 py-3 text-right" style={{ color: '#94a3b8' }}>{food.protein_per_100}g</td>
+                <td className="px-4 py-3 text-right" style={{ color: '#94a3b8' }}>{Number(food.cost_per_100).toFixed(2)}</td>
+                <td className="px-4 py-3 text-right text-xs" style={{ color: '#64748b' }}>100{food.unit}</td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => openEdit(food)} className="text-xs text-indigo-500 hover:text-indigo-700 mr-3">Bearbeiten</button>
-                  <button onClick={() => remove(food.id)} className="text-xs text-red-400 hover:text-red-600">Löschen</button>
+                  <button onClick={() => openEdit(food)} className="text-xs text-indigo-400 hover:text-indigo-300 mr-3 transition-colors">Bearbeiten</button>
+                  <button onClick={() => remove(food.id)} className="text-xs transition-colors" style={{ color: '#f87171' }}
+                    onMouseEnter={e => ((e.target as HTMLElement).style.color = '#ef4444')}
+                    onMouseLeave={e => ((e.target as HTMLElement).style.color = '#f87171')}
+                  >Löschen</button>
                 </td>
               </tr>
             ))}
@@ -146,26 +183,31 @@ export default function DatenbankPage() {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-              <h2 className="font-semibold text-gray-900 text-sm">
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50 p-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+        >
+          <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '1rem' }} className="w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <h2 className="font-semibold text-white text-sm">
                 {editing ? 'Lebensmittel bearbeiten' : 'Lebensmittel hinzufügen'}
               </h2>
             </div>
             <div className="p-6 space-y-4">
               {/* Name */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Name</label>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: '#94a3b8' }}>Name</label>
                 <input type="text" value={form.name} onChange={e => f(e.target.value, 'name')}
                   placeholder="z.B. Haferflocken"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  style={inputStyle}
+                />
               </div>
               {/* Unit */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Einheit</label>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: '#94a3b8' }}>Einheit</label>
                 <select value={form.unit} onChange={e => f(e.target.value as 'g' | 'ml', 'unit')}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  style={selectStyle}
+                >
                   <option value="g">Gramm (Feststoff)</option>
                   <option value="ml">Milliliter (Flüssigkeit)</option>
                 </select>
@@ -178,21 +220,29 @@ export default function DatenbankPage() {
                   { label: `CHF / 100${form.unit}`, field: 'cost_per_100' as const, placeholder: '0.00', step: '0.01' },
                 ].map(({ label, field, placeholder, step }) => (
                   <div key={field}>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: '#94a3b8' }}>{label}</label>
                     <input type="number" value={form[field]} onChange={e => f(e.target.value, field)}
                       placeholder={placeholder} min="0" step={step}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      style={inputStyle}
+                    />
                   </div>
                 ))}
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
-              <button onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50">
+            <div className="px-6 py-4 flex justify-end gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <button
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 text-sm rounded-lg transition-colors"
+                style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
                 Abbrechen
               </button>
-              <button onClick={save} disabled={!form.name || saving}
-                className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
+              <button
+                onClick={save}
+                disabled={!form.name || saving}
+                className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-40 transition-colors"
+                style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+              >
                 {saving ? 'Speichern…' : 'Speichern'}
               </button>
             </div>

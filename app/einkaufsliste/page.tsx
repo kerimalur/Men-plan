@@ -142,19 +142,36 @@ export default function EinkaufslistePage() {
   const unchecked = items.filter(i => !i.checked)
   const checked   = items.filter(i => i.checked)
 
+  const inputStyle: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'white',
+    borderRadius: '0.75rem',
+    padding: '0.625rem 1rem',
+    fontSize: '0.875rem',
+    outline: 'none',
+  }
+
   return (
     <div className="max-w-lg mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-gray-900">Einkaufsliste</h1>
+        <h1 className="text-lg font-semibold text-white">Einkaufsliste</h1>
         <div className="flex items-center gap-2">
           {checked.length > 0 && (
-            <button onClick={clearChecked} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+            <button
+              onClick={clearChecked}
+              className="text-xs transition-colors"
+              style={{ color: '#64748b' }}
+              onMouseEnter={e => ((e.target as HTMLElement).style.color = '#94a3b8')}
+              onMouseLeave={e => ((e.target as HTMLElement).style.color = '#64748b')}
+            >
               Erledigte löschen
             </button>
           )}
           <button
             onClick={() => setShowSync(v => !v)}
-            className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-1.5"
+            className="text-xs text-white px-3 py-1.5 rounded-lg font-medium hover:opacity-90 transition-opacity flex items-center gap-1.5"
+            style={{ background: '#059669' }}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -167,23 +184,36 @@ export default function EinkaufslistePage() {
 
       {/* Sync panel */}
       {showSync && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-5">
-          <h2 className="text-sm font-semibold text-gray-900 mb-3">Woche synchronisieren</h2>
-          <p className="text-xs text-gray-400 mb-4">
+        <div
+          className="rounded-2xl p-5 mb-5"
+          style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}
+        >
+          <h2 className="text-sm font-semibold text-white mb-3">Woche synchronisieren</h2>
+          <p className="text-xs mb-4" style={{ color: '#64748b' }}>
             Berechnet alle benötigten Zutaten aus dem Wochenplan und summiert sie auf.
           </p>
           <div className="flex items-center gap-2 mb-4">
-            <label className="text-xs text-gray-600 shrink-0">Wochenbeginn (Montag):</label>
+            <label className="text-xs shrink-0" style={{ color: '#94a3b8' }}>Wochenbeginn (Montag):</label>
             <input
               type="date"
               value={weekStart}
               onChange={e => setWeekStart(e.target.value)}
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              style={{
+                flex: 1,
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: 'white',
+                borderRadius: '0.5rem',
+                padding: '0.375rem 0.75rem',
+                fontSize: '0.875rem',
+                outline: 'none',
+              }}
             />
             <button
               onClick={syncFromPlan}
               disabled={syncing}
-              className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shrink-0"
+              className="text-white px-4 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-opacity hover:opacity-90 shrink-0"
+              style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
             >
               {syncing ? 'Lädt…' : 'Berechnen'}
             </button>
@@ -191,15 +221,22 @@ export default function EinkaufslistePage() {
 
           {syncItems.length > 0 && (
             <>
-              <div className="divide-y divide-gray-50 border border-gray-100 rounded-xl mb-3 overflow-hidden">
+              <div
+                className="rounded-xl mb-3 overflow-hidden"
+                style={{ border: '1px solid rgba(255,255,255,0.07)' }}
+              >
                 {syncItems.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between px-4 py-2.5">
-                    <span className="text-sm text-gray-800">{item.food_name}</span>
+                  <div
+                    key={i}
+                    className="flex items-center justify-between px-4 py-2.5"
+                    style={i > 0 ? { borderTop: '1px solid rgba(255,255,255,0.06)' } : {}}
+                  >
+                    <span className="text-sm text-white">{item.food_name}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-gray-600">{formatAmount(item.total, item.unit)}</span>
+                      <span className="text-sm font-medium" style={{ color: '#94a3b8' }}>{formatAmount(item.total, item.unit)}</span>
                       <button
                         onClick={() => addSyncItemToList(item)}
-                        className="text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                        className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
                       >
                         + Liste
                       </button>
@@ -209,7 +246,8 @@ export default function EinkaufslistePage() {
               </div>
               <button
                 onClick={addAllToList}
-                className="w-full bg-emerald-600 text-white py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors"
+                className="w-full text-white py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
+                style={{ background: '#059669' }}
               >
                 Alle zur Einkaufsliste hinzufügen
               </button>
@@ -217,7 +255,7 @@ export default function EinkaufslistePage() {
           )}
 
           {!syncing && syncItems.length === 0 && (
-            <p className="text-xs text-gray-400 text-center py-2">
+            <p className="text-xs text-center py-2" style={{ color: '#64748b' }}>
               Für diese Woche sind keine Mahlzeiten geplant.
             </p>
           )}
@@ -226,36 +264,73 @@ export default function EinkaufslistePage() {
 
       {/* Add form */}
       <form onSubmit={add} className="flex gap-2 mb-5">
-        <input type="text" value={newItem} onChange={e => setNewItem(e.target.value)}
+        <input
+          type="text"
+          value={newItem}
+          onChange={e => setNewItem(e.target.value)}
           placeholder="Artikel…"
-          className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
-        <input type="text" value={newQty} onChange={e => setNewQty(e.target.value)}
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        <input
+          type="text"
+          value={newQty}
+          onChange={e => setNewQty(e.target.value)}
           placeholder="Menge"
-          className="w-24 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
-        <button type="submit"
-          className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors">
+          style={{ ...inputStyle, width: '6rem' }}
+        />
+        <button
+          type="submit"
+          className="text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+          style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+        >
           +
         </button>
       </form>
 
       {/* List */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm divide-y divide-gray-50">
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}
+      >
         {items.length === 0 && (
-          <p className="px-5 py-10 text-center text-sm text-gray-400">Einkaufsliste ist leer</p>
+          <p className="px-5 py-10 text-center text-sm" style={{ color: '#64748b' }}>Einkaufsliste ist leer</p>
         )}
-        {[...unchecked, ...checked].map(item => (
-          <div key={item.id} className="flex items-center gap-3 px-5 py-3">
-            <input type="checkbox" checked={item.checked} onChange={() => toggle(item.id, item.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0" />
-            <span className={`flex-1 text-sm ${item.checked ? 'line-through text-gray-300' : 'text-gray-900'}`}>
+        {[...unchecked, ...checked].map((item, idx) => (
+          <div
+            key={item.id}
+            className="flex items-center gap-3 px-5 py-3"
+            style={idx > 0 ? { borderTop: '1px solid rgba(255,255,255,0.06)' } : {}}
+          >
+            <input
+              type="checkbox"
+              checked={item.checked}
+              onChange={() => toggle(item.id, item.checked)}
+              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
+              style={{ accentColor: '#6366f1' }}
+            />
+            <span
+              className={`flex-1 text-sm ${item.checked ? 'line-through' : ''}`}
+              style={{ color: item.checked ? '#475569' : 'white' }}
+            >
               {item.item}
             </span>
             {item.quantity && (
-              <span className={`text-xs font-medium shrink-0 ${item.checked ? 'text-gray-300' : 'text-gray-500'}`}>
+              <span
+                className="text-xs font-medium shrink-0"
+                style={{ color: item.checked ? '#475569' : '#94a3b8' }}
+              >
                 {item.quantity}
               </span>
             )}
-            <button onClick={() => remove(item.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0">×</button>
+            <button
+              onClick={() => remove(item.id)}
+              className="text-base leading-none shrink-0 transition-colors"
+              style={{ color: '#475569' }}
+              onMouseEnter={e => ((e.target as HTMLElement).style.color = '#f87171')}
+              onMouseLeave={e => ((e.target as HTMLElement).style.color = '#475569')}
+            >
+              ×
+            </button>
           </div>
         ))}
       </div>

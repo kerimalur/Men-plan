@@ -35,28 +35,50 @@ export default function EinstellungenPage() {
     setTimeout(() => setSaved(false), 2500)
   }
 
-  if (loading) return <div className="text-center py-12 text-sm text-gray-400">Laden…</div>
+  if (loading) return <div className="text-center py-12 text-sm" style={{ color: '#64748b' }}>Laden…</div>
+
+  const inputStyle: React.CSSProperties = {
+    width: '6rem',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'white',
+    borderRadius: '0.5rem',
+    padding: '0.5rem 0.75rem',
+    fontSize: '0.875rem',
+    textAlign: 'right',
+    outline: 'none',
+  }
 
   return (
     <div className="max-w-lg mx-auto">
       <div className="mb-7">
-        <h1 className="text-lg font-semibold text-gray-900">Einstellungen</h1>
-        <p className="text-xs text-gray-400 mt-1">
+        <h1 className="text-lg font-semibold text-white">Einstellungen</h1>
+        <p className="text-xs mt-1" style={{ color: '#64748b' }}>
           Ziele für Kalorien, Protein und Kosten — steuern die Farbanzeigen im Dashboard und Kalender.
         </p>
       </div>
 
       {/* Goal section */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-5">
-        <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50/50">
-          <h2 className="text-sm font-semibold text-gray-800">Tagesziele</h2>
+      <div
+        className="rounded-2xl overflow-hidden mb-5"
+        style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}
+      >
+        <div
+          className="px-5 py-3.5"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.04)' }}
+        >
+          <h2 className="text-sm font-semibold text-white">Tagesziele</h2>
         </div>
-        <div className="divide-y divide-gray-50">
-          {FIELDS.map(f => (
-            <div key={f.key} className="px-5 py-4 flex items-center gap-4">
+        <div>
+          {FIELDS.map((f, idx) => (
+            <div
+              key={f.key}
+              className="px-5 py-4 flex items-center gap-4"
+              style={idx > 0 ? { borderTop: '1px solid rgba(255,255,255,0.06)' } : {}}
+            >
               <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-900">{f.label}</label>
-                <p className="text-xs text-gray-400 mt-0.5">{f.description}</p>
+                <label className="block text-sm font-medium text-white">{f.label}</label>
+                <p className="text-xs mt-0.5" style={{ color: '#64748b' }}>{f.description}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <input
@@ -65,9 +87,9 @@ export default function EinstellungenPage() {
                   onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
                   min={f.min}
                   step={f.step}
-                  className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  style={inputStyle}
                 />
-                <span className="text-xs text-gray-500 w-8">{f.unit}</span>
+                <span className="text-xs w-8" style={{ color: '#94a3b8' }}>{f.unit}</span>
               </div>
             </div>
           ))}
@@ -75,18 +97,21 @@ export default function EinstellungenPage() {
       </div>
 
       {/* Color legend */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-5">
-        <h2 className="text-sm font-semibold text-gray-800 mb-3">Farbskala</h2>
+      <div
+        className="rounded-2xl p-5 mb-5"
+        style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}
+      >
+        <h2 className="text-sm font-semibold text-white mb-3">Farbskala</h2>
         <div className="space-y-2">
           {[
-            { color: 'bg-green-500',  label: 'Grün',  desc: '≥ 100% des Ziels erreicht' },
+            { color: 'bg-green-500',  label: 'Grün',   desc: '≥ 100% des Ziels erreicht' },
             { color: 'bg-amber-500',  label: 'Orange', desc: '80–99% des Ziels erreicht' },
             { color: 'bg-red-500',    label: 'Rot',    desc: '< 80% des Ziels' },
           ].map(item => (
             <div key={item.label} className="flex items-center gap-3">
               <div className={`w-3 h-3 rounded-full ${item.color}`} />
-              <span className="text-xs font-medium text-gray-700 w-12">{item.label}</span>
-              <span className="text-xs text-gray-500">{item.desc}</span>
+              <span className="text-xs font-medium text-white w-12">{item.label}</span>
+              <span className="text-xs" style={{ color: '#94a3b8' }}>{item.desc}</span>
             </div>
           ))}
         </div>
@@ -95,11 +120,8 @@ export default function EinstellungenPage() {
       {/* Save */}
       <button
         onClick={handleSave}
-        className={`w-full py-3 rounded-xl text-sm font-semibold transition-all ${
-          saved
-            ? 'bg-green-600 text-white'
-            : 'bg-indigo-600 text-white hover:bg-indigo-700'
-        }`}
+        className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all"
+        style={saved ? { background: '#16a34a' } : { background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
       >
         {saved ? 'Gespeichert ✓' : 'Speichern'}
       </button>

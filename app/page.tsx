@@ -10,15 +10,11 @@ const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
 const DAY_NAMES = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
 
 const MEAL_ORDER = ['fruehstueck', 'mittagessen', 'abendessen', 'snack']
-const MEAL_LABELS: Record<string, string> = {
-  fruehstueck: 'Frühstück', mittagessen: 'Mittagessen',
-  abendessen: 'Abendessen', snack: 'Snack',
-}
-const MEAL_COLORS: Record<string, { text: string; dot: string }> = {
-  fruehstueck: { text: 'text-amber-600',   dot: 'bg-amber-400' },
-  mittagessen: { text: 'text-emerald-600', dot: 'bg-emerald-400' },
-  abendessen:  { text: 'text-blue-600',    dot: 'bg-blue-400' },
-  snack:       { text: 'text-violet-600',  dot: 'bg-violet-400' },
+const MEAL_META: Record<string, { label: string; gradient: string; text: string }> = {
+  fruehstueck: { label: 'Frühstück',   gradient: 'linear-gradient(135deg,#f59e0b,#f97316)', text: '#fef3c7' },
+  mittagessen: { label: 'Mittagessen', gradient: 'linear-gradient(135deg,#10b981,#0d9488)', text: '#d1fae5' },
+  abendessen:  { label: 'Abendessen',  gradient: 'linear-gradient(135deg,#3b82f6,#6366f1)', text: '#dbeafe' },
+  snack:       { label: 'Snack',       gradient: 'linear-gradient(135deg,#8b5cf6,#ec4899)', text: '#ede9fe' },
 }
 
 function greeting() {
@@ -28,61 +24,46 @@ function greeting() {
   return 'Guten Abend'
 }
 
-function ProgressRing({ value, max }: { value: number; max: number }) {
-  const size = 100
-  const r = 38
+function ArcProgress({ value, max, size = 110 }: { value: number; max: number; size?: number }) {
+  const r = size * 0.37
   const circ = 2 * Math.PI * r
-  const pct = max > 0 ? Math.min(value / max, 1.1) : 0
+  const pct = max > 0 ? Math.min(value / max, 1) : 0
   const color = goalColor(value, max)
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
-      style={{ transform: 'rotate(-90deg)' }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f1f5f9" strokeWidth="9" />
-      <circle
-        cx={size / 2} cy={size / 2} r={r} fill="none"
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="9" />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none"
         stroke={color} strokeWidth="9"
-        strokeDasharray={circ}
-        strokeDashoffset={circ * (1 - Math.min(pct, 1))}
+        strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)}
         strokeLinecap="round"
-        style={{ transition: 'stroke-dashoffset 0.7s ease, stroke 0.3s ease' }}
+        style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(.4,0,.2,1), stroke 0.3s ease' }}
       />
     </svg>
   )
 }
 
-interface Meal {
-  id: string; meal_type: string; name: string
-  kcal_total: number; protein_total: number; cost_total: number
-}
-interface Plan {
-  id: string; kcal_total: number; protein_total: number; cost_total: number
-}
-interface DayMarker {
-  training: boolean; eingeladen: boolean
-}
+interface Meal { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number }
+interface Plan { kcal_total: number; protein_total: number; cost_total: number }
+interface DayMarker { training: boolean; eingeladen: boolean }
 
 export default function Dashboard() {
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
   const todayLabel = `${DAY_NAMES[today.getDay()]}, ${today.getDate()}. ${MONTH_NAMES[today.getMonth()]} ${today.getFullYear()}`
 
-  const [plan, setPlan] = useState<Plan | null>(null)
-  const [meals, setMeals] = useState<Meal[]>([])
+  const [plan, setPlan]     = useState<Plan | null>(null)
+  const [meals, setMeals]   = useState<Meal[]>([])
   const [marker, setMarker] = useState<DayMarker | null>(null)
-  const [goals, setGoals] = useState({ kcal: 2000, protein: 150, kosten: 20 })
+  const [goals, setGoals]   = useState({ kcal: 2000, protein: 150, kosten: 20 })
 
   useEffect(() => {
     async function load() {
       const [planRes, settingsData, markerRes] = await Promise.all([
         supabase.from('meal_plans').select('*').eq('date', todayStr).maybeSingle(),
         loadSettings(),
-        supabase.from('day_markers').select('training, eingeladen').eq('date', todayStr).maybeSingle(),
+        supabase.from('day_markers').select('training,eingeladen').eq('date', todayStr).maybeSingle(),
       ])
-      setGoals({
-        kcal:    parseInt(settingsData.kcal_ziel)    || 2000,
-        protein: parseInt(settingsData.protein_ziel) || 150,
-        kosten:  parseInt(settingsData.kosten_ziel)  || 20,
-      })
+      setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150, kosten: parseInt(settingsData.kosten_ziel) || 20 })
       setMarker(markerRes.data)
       if (planRes.data) {
         setPlan(planRes.data)
@@ -97,84 +78,107 @@ export default function Dashboard() {
   const protein = plan?.protein_total || 0
   const cost    = plan?.cost_total    || 0
 
-  const stats = [
-    { label: 'Kalorien', value: Math.round(kcal),    max: goals.kcal,    display: `${Math.round(kcal)}`,              sub: `/ ${goals.kcal} kcal` },
-    { label: 'Protein',  value: protein,              max: goals.protein, display: `${Math.round(protein * 10) / 10}g`, sub: `/ ${goals.protein}g` },
-    { label: 'Kosten',   value: cost,                 max: goals.kosten,  display: `CHF ${cost.toFixed(2)}`,            sub: `/ CHF ${goals.kosten}` },
-  ]
-
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-xl mx-auto">
 
-      {/* Header */}
-      <div className="mb-7">
-        <p className="text-sm text-gray-400 font-medium mb-1">{greeting()}</p>
-        <h1 className="text-2xl font-bold text-gray-900">{todayLabel}</h1>
-        {(marker?.training || marker?.eingeladen) && (
-          <div className="flex gap-2 mt-2">
-            {marker.training   && <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full font-medium">Training</span>}
-            {marker.eingeladen && <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full font-medium">Eingeladen</span>}
-          </div>
-        )}
-      </div>
+      {/* Hero banner */}
+      <div className="relative rounded-2xl overflow-hidden mb-6 p-7"
+        style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 45%, #4c1d95 100%)' }}>
+        {/* Decorative circles */}
+        <div className="absolute -right-10 -top-10 w-52 h-52 rounded-full opacity-10"
+          style={{ background: 'radial-gradient(circle, #818cf8, transparent)' }} />
+        <div className="absolute right-20 -bottom-8 w-32 h-32 rounded-full opacity-15"
+          style={{ background: 'radial-gradient(circle, #a78bfa, transparent)' }} />
 
-      {/* Progress rings */}
-      <div className="grid grid-cols-3 gap-3 mb-7">
-        {stats.map(stat => {
-          const pct = stat.max > 0 ? Math.round((stat.value / stat.max) * 100) : 0
-          const tc  = goalTextClass(stat.value, stat.max)
-          return (
-            <div key={stat.label} className="bg-white rounded-2xl border border-gray-200 p-4 flex flex-col items-center shadow-sm">
-              <div className="relative mb-2">
-                <ProgressRing value={stat.value} max={stat.max} />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className={`text-sm font-bold ${tc}`}>{pct}%</span>
-                </div>
-              </div>
-              <p className={`text-base font-bold ${tc}`}>{stat.display}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{stat.sub}</p>
-              <p className="text-xs font-semibold text-gray-500 mt-1">{stat.label}</p>
+        <div className="relative">
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: '#a5b4fc' }}>
+            {greeting()}
+          </p>
+          <h1 className="text-2xl font-bold text-white mb-3">{todayLabel}</h1>
+
+          {(marker?.training || marker?.eingeladen) && (
+            <div className="flex gap-2 mb-4">
+              {marker.training   && <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: 'rgba(59,130,246,0.3)', color: '#93c5fd' }}>Training</span>}
+              {marker.eingeladen && <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: 'rgba(168,85,247,0.3)', color: '#c4b5fd' }}>Eingeladen</span>}
             </div>
-          )
-        })}
+          )}
+
+          {/* Inline stats */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Kalorien', value: Math.round(kcal),    max: goals.kcal,    display: `${Math.round(kcal)}`, unit: 'kcal' },
+              { label: 'Protein',  value: protein,             max: goals.protein, display: `${Math.round(protein * 10) / 10}`, unit: 'g' },
+              { label: 'Kosten',   value: cost,                max: goals.kosten,  display: cost.toFixed(2), unit: 'CHF', prefix: true },
+            ].map(s => {
+              const pct = s.max > 0 ? Math.round((s.value / s.max) * 100) : 0
+              const color = goalColor(s.value, s.max)
+              return (
+                <div key={s.label} className="flex flex-col items-center">
+                  <div className="relative mb-1.5">
+                    <ArcProgress value={s.value} max={s.max} size={90} />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-bold text-white">{pct}%</span>
+                    </div>
+                  </div>
+                  <p className="text-lg font-black" style={{ color }}>
+                    {s.prefix ? `CHF ${s.display}` : s.display}
+                    {!s.prefix && <span className="text-xs font-normal ml-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>{s.unit}</span>}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                    {s.prefix ? `/ CHF ${s.max}` : `/ ${s.max}${s.unit}`}
+                  </p>
+                  <p className="text-xs font-semibold mt-1" style={{ color: '#94a3b8' }}>{s.label}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
-      {/* Today's plan */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900 text-sm">Heutiger Menüplan</h2>
-          <Link href={`/tag/${todayStr}`} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+      {/* Today's meals */}
+      <div className="rounded-2xl overflow-hidden" style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span className="text-sm font-bold text-white">Heutiger Menüplan</span>
+          <Link href={`/tag/${todayStr}`} className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+            style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
             Bearbeiten →
           </Link>
         </div>
 
         {meals.length === 0 ? (
           <div className="px-5 py-10 text-center">
-            <p className="text-sm text-gray-400 mb-4">Noch nichts für heute geplant.</p>
+            <p className="text-sm mb-4" style={{ color: '#475569' }}>Noch nichts für heute geplant.</p>
             <Link href={`/tag/${todayStr}`}
-              className="inline-block bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+              className="inline-block text-sm font-semibold px-5 py-2.5 rounded-xl text-white transition-all"
+              style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
               Jetzt planen
             </Link>
           </div>
         ) : (
-          MEAL_ORDER.map(type => {
+          MEAL_ORDER.map((type, i) => {
             const meal = meals.find(m => m.meal_type === type)
-            const c = MEAL_COLORS[type]
+            const meta = MEAL_META[type]
             return (
-              <div key={type} className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-50 last:border-b-0">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${c.dot}`} />
-                <span className={`text-xs font-semibold w-20 shrink-0 ${c.text}`}>{MEAL_LABELS[type]}</span>
+              <div key={type} className="flex items-center gap-4 px-5 py-3.5"
+                style={{ borderBottom: i < 3 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                {/* Colored dot */}
+                <div className="w-2 h-2 rounded-full shrink-0"
+                  style={{ background: meta.gradient }} />
+                <span className="text-xs font-bold w-22 shrink-0" style={{ color: '#94a3b8', minWidth: '5rem' }}>
+                  {meta.label}
+                </span>
                 {meal ? (
                   <>
-                    <span className="text-sm text-gray-800 flex-1 truncate">{meal.name}</span>
-                    <div className="flex gap-3 text-xs text-gray-400 shrink-0">
-                      <span className={goalTextClass(meal.kcal_total, 0)}>{Math.round(meal.kcal_total)} kcal</span>
-                      <span>{meal.protein_total}g P</span>
-                      <span>CHF {Number(meal.cost_total).toFixed(2)}</span>
+                    <span className="text-sm text-white flex-1 truncate font-medium">{meal.name}</span>
+                    <div className="flex gap-3 shrink-0">
+                      <span className={`text-xs font-semibold ${goalTextClass(meal.kcal_total, 0)}`} style={{ color: goalColor(meal.kcal_total, 0) }}>
+                        {Math.round(meal.kcal_total)} kcal
+                      </span>
+                      <span className="text-xs" style={{ color: '#64748b' }}>{meal.protein_total}g P</span>
                     </div>
                   </>
                 ) : (
-                  <span className="text-xs text-gray-300">Nicht geplant</span>
+                  <span className="text-xs" style={{ color: '#334155' }}>—</span>
                 )}
               </div>
             )
@@ -184,22 +188,16 @@ export default function Dashboard() {
 
       {/* Quick links */}
       <div className="grid grid-cols-2 gap-3 mt-4">
-        <Link href="/kalender"
-          className="bg-white rounded-xl border border-gray-200 px-4 py-3.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm">
-          <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          Wochenplanung
-        </Link>
-        <Link href="/einkaufsliste"
-          className="bg-white rounded-xl border border-gray-200 px-4 py-3.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm">
-          <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-          </svg>
-          Einkaufsliste
-        </Link>
+        {[
+          { href: '/kalender', label: 'Wochenplanung', color: 'rgba(99,102,241,0.15)', textColor: '#a5b4fc', border: 'rgba(99,102,241,0.2)' },
+          { href: '/einkaufsliste', label: 'Einkaufsliste', color: 'rgba(16,185,129,0.12)', textColor: '#6ee7b7', border: 'rgba(16,185,129,0.2)' },
+        ].map(item => (
+          <Link key={item.href} href={item.href}
+            className="rounded-xl px-4 py-3.5 text-sm font-semibold transition-all text-center"
+            style={{ background: item.color, color: item.textColor, border: `1px solid ${item.border}` }}>
+            {item.label}
+          </Link>
+        ))}
       </div>
     </div>
   )
