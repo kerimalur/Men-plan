@@ -28,3 +28,19 @@ ALTER TABLE day_markers ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "allow_all" ON settings    FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON day_markers FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- Stückzahl-Einheit: 'stk' zu allen unit-Constraints hinzufügen
+-- ============================================================
+
+-- foods.unit: 'g', 'ml' → + 'stk'
+ALTER TABLE foods DROP CONSTRAINT IF EXISTS foods_unit_check;
+ALTER TABLE foods ADD CONSTRAINT foods_unit_check CHECK (unit IN ('g', 'ml', 'stk'));
+
+-- meal_template_items.unit: + 'stk'
+ALTER TABLE meal_template_items DROP CONSTRAINT IF EXISTS meal_template_items_unit_check;
+ALTER TABLE meal_template_items ADD CONSTRAINT meal_template_items_unit_check CHECK (unit IN ('g', 'ml', 'dl', 'l', 'stk'));
+
+-- meal_items.unit: + 'stk'
+ALTER TABLE meal_items DROP CONSTRAINT IF EXISTS meal_items_unit_check;
+ALTER TABLE meal_items ADD CONSTRAINT meal_items_unit_check CHECK (unit IN ('g', 'ml', 'dl', 'l', 'stk'));

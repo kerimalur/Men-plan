@@ -17,7 +17,7 @@ interface Food {
   calories_per_100: number
   protein_per_100: number
   cost_per_100: number
-  unit: 'g' | 'ml'
+  unit: 'g' | 'ml' | 'stk'
 }
 
 interface Item {
@@ -114,7 +114,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
     setSelectedFood(food)
     setSearchQuery(food.name)
     setSearchResults([])
-    setUnit(food.unit === 'ml' ? 'ml' : 'g')
+    setUnit(food.unit === 'ml' ? 'ml' : food.unit === 'stk' ? 'stk' : 'g')
     setAmount('')
   }
 
@@ -286,7 +286,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                     >
                       <span className="font-medium">{food.name}</span>
                       <span className="text-xs ml-2" style={{ color: '#64748b' }}>
-                        {food.calories_per_100} kcal · {food.protein_per_100}g P · CHF {Number(food.cost_per_100).toFixed(2)}/100{food.unit}
+                        {food.calories_per_100} kcal · {food.protein_per_100}g P · CHF {Number(food.cost_per_100).toFixed(2)}{food.unit === 'stk' ? '/Stück' : `/100${food.unit}`}
                       </span>
                     </li>
                   ))}
@@ -317,6 +317,8 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                     <option value="dl">dl</option>
                     <option value="l">l</option>
                   </>
+                ) : selectedFood?.unit === 'stk' ? (
+                  <option value="stk">Stk.</option>
                 ) : (
                   <option value="g">g</option>
                 )}

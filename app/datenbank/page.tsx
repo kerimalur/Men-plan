@@ -9,7 +9,7 @@ interface Food {
   calories_per_100: number
   protein_per_100: number
   cost_per_100: number
-  unit: 'g' | 'ml'
+  unit: 'g' | 'ml' | 'stk'
 }
 
 interface FoodForm {
@@ -17,7 +17,7 @@ interface FoodForm {
   calories_per_100: string
   protein_per_100: string
   cost_per_100: string
-  unit: 'g' | 'ml'
+  unit: 'g' | 'ml' | 'stk'
 }
 
 const emptyForm: FoodForm = {
@@ -54,7 +54,7 @@ export default function DatenbankPage() {
       calories_per_100: String(food.calories_per_100),
       protein_per_100:  String(food.protein_per_100),
       cost_per_100:     String(food.cost_per_100),
-      unit:             food.unit,
+      unit:             food.unit as 'g' | 'ml' | 'stk',
     })
     setShowModal(true)
   }
@@ -167,7 +167,7 @@ export default function DatenbankPage() {
                 <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{food.calories_per_100}</td>
                 <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{food.protein_per_100}g</td>
                 <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{Number(food.cost_per_100).toFixed(2)}</td>
-                <td className="px-4 py-3 text-right text-xs" style={{ color: '#94a3b8' }}>100{food.unit}</td>
+                <td className="px-4 py-3 text-right text-xs" style={{ color: '#94a3b8' }}>{food.unit === 'stk' ? '1 Stk.' : `100${food.unit}`}</td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => openEdit(food)} className="text-xs mr-3 transition-colors" style={{ color: '#475569' }}
                     onMouseEnter={e => ((e.target as HTMLElement).style.color = '#1e293b')}
@@ -208,19 +208,20 @@ export default function DatenbankPage() {
               {/* Unit */}
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Einheit</label>
-                <select value={form.unit} onChange={e => f(e.target.value as 'g' | 'ml', 'unit')}
+                <select value={form.unit} onChange={e => f(e.target.value as 'g' | 'ml' | 'stk', 'unit')}
                   style={selectStyle}
                 >
                   <option value="g">Gramm (Feststoff)</option>
                   <option value="ml">Milliliter (Flüssigkeit)</option>
+                  <option value="stk">Stückzahl (pro Stück)</option>
                 </select>
               </div>
               {/* Nutrition + cost */}
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: `kcal / 100${form.unit}`, field: 'calories_per_100' as const, placeholder: '0', step: '1' },
-                  { label: `Protein / 100${form.unit}`, field: 'protein_per_100' as const, placeholder: '0', step: '0.1' },
-                  { label: `CHF / 100${form.unit}`, field: 'cost_per_100' as const, placeholder: '0.00', step: '0.01' },
+                  { label: form.unit === 'stk' ? 'kcal / Stück' : `kcal / 100${form.unit}`, field: 'calories_per_100' as const, placeholder: '0', step: '1' },
+                  { label: form.unit === 'stk' ? 'Protein / Stück' : `Protein / 100${form.unit}`, field: 'protein_per_100' as const, placeholder: '0', step: '0.1' },
+                  { label: form.unit === 'stk' ? 'CHF / Stück' : `CHF / 100${form.unit}`, field: 'cost_per_100' as const, placeholder: '0.00', step: '0.01' },
                 ].map(({ label, field, placeholder, step }) => (
                   <div key={field}>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>{label}</label>
