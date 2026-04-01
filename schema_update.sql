@@ -125,3 +125,20 @@ CREATE POLICY "allow_all" ON plan_templates      FOR ALL TO anon USING (true) WI
 CREATE POLICY "allow_all" ON plan_template_days  FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON plan_template_meals FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON plan_template_items FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- Event-Mahlzeit-Regeln (Automatisierung)
+-- z.B. "Bei Training → Porridge zum Frühstück"
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS event_meal_rules (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  event_type  TEXT NOT NULL CHECK (event_type IN ('training', 'eingeladen')),
+  meal_type   TEXT NOT NULL CHECK (meal_type IN ('fruehstueck', 'mittagessen', 'abendessen', 'snack')),
+  template_id UUID NOT NULL REFERENCES meal_templates(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE event_meal_rules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow_all" ON event_meal_rules;
+CREATE POLICY "allow_all" ON event_meal_rules FOR ALL TO anon USING (true) WITH CHECK (true);

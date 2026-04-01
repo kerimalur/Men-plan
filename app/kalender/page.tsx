@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { loadSettings, goalColor } from '@/lib/settings'
+import { applyEventRules } from '@/lib/eventRules'
+import { useSwipe } from '@/lib/useSwipe'
 
 const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
   'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
@@ -193,11 +195,16 @@ function DayPopup({ dateStr, plan, marker, goals, isComplete, onClose, onMarkerC
   }, [onClose])
 
   async function toggleMarker(field: 'training' | 'eingeladen') {
+    const wasActive = marker?.[field] ?? false
+    const nowActive = !wasActive
     await supabase.from('day_markers').upsert({
       date: dateStr,
-      training:   field === 'training'   ? !(marker?.training   ?? false) : (marker?.training   ?? false),
-      eingeladen: field === 'eingeladen' ? !(marker?.eingeladen ?? false) : (marker?.eingeladen ?? false),
+      training:   field === 'training'   ? nowActive : (marker?.training   ?? false),
+      eingeladen: field === 'eingeladen' ? nowActive : (marker?.eingeladen ?? false),
     })
+    if (nowActive) {
+      await applyEventRules(dateStr, field)
+    }
     onMarkerChange()
   }
 
@@ -650,6 +657,11 @@ export default function KalenderPage() {
 
   const monday    = getMondayOfWeek(today)
   const thisWeek  = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d })
+
+  useSwipe({
+    onSwipeLeft:  () => setAnchor(new Date(year, month + 1, 1)),
+    onSwipeRight: () => setAnchor(new Date(year, month - 1, 1)),
+  })
   const firstDay  = new Date(year, month, 1)
   const lastDay   = new Date(year, month + 1, 0)
   let startOff    = firstDay.getDay(); startOff = startOff === 0 ? 6 : startOff - 1

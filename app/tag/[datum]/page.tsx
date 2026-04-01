@@ -5,13 +5,14 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { sumItems } from '@/lib/calculations'
 import { loadSettings, goalColor } from '@/lib/settings'
+import { useSwipe } from '@/lib/useSwipe'
 import MealModal from '@/components/MealModal'
 
 const MEAL_TYPES = [
-  { key: 'fruehstueck', label: 'Frühstück',   color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  { key: 'mittagessen', label: 'Mittagessen',  color: '#059669', bg: '#f0fdf4', border: '#bbf7d0' },
-  { key: 'abendessen',  label: 'Abendessen',   color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe' },
-  { key: 'snack',       label: 'Snack',        color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+  { key: 'fruehstueck', label: 'Frühstück',   color: '#78716c', bg: '#fafaf9', border: '#e7e5e4' },
+  { key: 'mittagessen', label: 'Mittagessen',  color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
+  { key: 'abendessen',  label: 'Abendessen',   color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
+  { key: 'snack',       label: 'Snack',        color: '#71717a', bg: '#fafafa', border: '#e4e4e7' },
 ]
 
 const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
@@ -159,9 +160,17 @@ export default function TagPage() {
   }
 
   function navDay(offset: number) {
-    const d = new Date(datum + 'T12:00:00'); d.setDate(d.getDate() + offset)
+    const step = view === 'woche' ? offset * 7 : offset
+    const d = new Date(datum + 'T12:00:00'); d.setDate(d.getDate() + step)
     router.push(`/tag/${toDateStr(d)}`)
   }
+
+  useSwipe({
+    onSwipeLeft:  () => navDay(1),
+    onSwipeRight: () => navDay(-1),
+  })
+
+  const [hideEmpty, setHideEmpty] = useState(false)
 
   const totals = sumItems(meals.map(m => ({ kcal: m.kcal_total, protein: m.protein_total, cost: m.cost_total })))
 
@@ -232,7 +241,15 @@ export default function TagPage() {
           style={{ color: '#64748b', background: '#f1f5f9' }}>←</button>
         <div className="text-center">
           <h1 className="text-sm font-bold" style={{ color: '#1e293b' }}>{formattedDate}</h1>
-          {datum === todayStr && <span className="text-xs font-semibold" style={{ color: '#475569' }}>Heute</span>}
+          {datum === todayStr ? (
+            <span className="text-xs font-semibold" style={{ color: '#475569' }}>Heute</span>
+          ) : (
+            <button onClick={() => router.push(`/tag/${todayStr}`)}
+              className="text-xs font-semibold px-2 py-0.5 rounded-md transition-all"
+              style={{ color: '#4f46e5', background: '#eef2ff' }}>
+              ↩ Heute
+            </button>
+          )}
         </div>
         <button onClick={() => navDay(1)}
           className="w-9 h-9 flex items-center justify-center rounded-xl transition-all"
@@ -292,9 +309,10 @@ export default function TagPage() {
           <div className="space-y-2">
             {weekDays.map((wd, i) => {
               const ds = toDateStr(wd), wp = weekPlans.find(p => p.date === ds)
+              const hasData = wp && wp.kcal_total > 0
               const isActive = ds === datum, isToday = ds === todayStr
-              const pct = wp ? Math.min((wp.kcal_total / goals.kcal) * 100, 100) : 0
-              const barColor = wp ? goalColor(wp.kcal_total, goals.kcal) : '#e2e8f0'
+              const pct = hasData ? Math.min((wp.kcal_total / goals.kcal) * 100, 100) : 0
+              const barColor = hasData ? goalColor(wp.kcal_total, goals.kcal) : '#e2e8f0'
               return (
                 <button key={i} onClick={() => { router.push(`/tag/${ds}`); setView('tag') }}
                   className="w-full rounded-xl transition-all text-left overflow-hidden"
@@ -313,7 +331,7 @@ export default function TagPage() {
                         {wd.getDate()}. {MONTH_NAMES[wd.getMonth()].slice(0, 3)}.
                       </span>
                     </div>
-                    {wp ? (
+                    {hasData ? (
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-sm font-bold" style={{ color: goalColor(wp.kcal_total, goals.kcal) }}>
@@ -412,9 +430,18 @@ export default function TagPage() {
           )}
 
           {/* Meal sections */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Mahlzeiten</span>
+            <button onClick={() => setHideEmpty(!hideEmpty)}
+              className="text-xs px-2 py-0.5 rounded-md transition-all"
+              style={{ color: hideEmpty ? '#4f46e5' : '#94a3b8', background: hideEmpty ? '#eef2ff' : 'transparent' }}>
+              {hideEmpty ? 'Alle anzeigen' : 'Leere ausblenden'}
+            </button>
+          </div>
           <div className="space-y-3">
             {MEAL_TYPES.map(({ key, label, color, bg, border }) => {
               const sectionMeals = meals.filter(m => m.meal_type === key)
+              if (hideEmpty && sectionMeals.length === 0) return null
               return (
                 <div key={key} className="rounded-2xl overflow-hidden"
                   style={{ border: `1px solid ${border}` }}>

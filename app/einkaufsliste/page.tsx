@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useSwipe } from '@/lib/useSwipe'
+import { useRouter } from 'next/navigation'
 
 interface ShoppingItem { id: string; item: string; quantity: string | null; checked: boolean }
 
@@ -52,6 +54,12 @@ export default function EinkaufslistePage() {
   const [syncItems, setSyncItems] = useState<SyncItem[]>([])
   const [showSync, setShowSync]   = useState(false)
   const [weekStart, setWeekStart] = useState(() => toDateStr(getMondayOfWeek(new Date())))
+  const router = useRouter()
+
+  useSwipe({
+    onSwipeLeft:  () => router.push('/einstellungen'),
+    onSwipeRight: () => router.push(`/tag/${toDateStr(new Date())}`),
+  })
 
   useEffect(() => { load() }, [])
 

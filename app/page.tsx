@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { loadSettings, goalColor } from '@/lib/settings'
+import { useSwipe } from '@/lib/useSwipe'
 
 const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
   'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
@@ -50,11 +52,17 @@ export default function Dashboard() {
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
   const todayLabel = `${DAY_NAMES[today.getDay()]}, ${today.getDate()}. ${MONTH_NAMES[today.getMonth()]} ${today.getFullYear()}`
+  const router = useRouter()
 
   const [plan, setPlan]     = useState<Plan | null>(null)
   const [meals, setMeals]   = useState<Meal[]>([])
   const [marker, setMarker] = useState<DayMarker | null>(null)
   const [goals, setGoals]   = useState({ kcal: 2000, protein: 150, kosten: 20 })
+
+  useSwipe({
+    onSwipeLeft:  () => router.push(`/tag/${todayStr}`),
+    onSwipeRight: () => router.push('/kalender'),
+  })
 
   useEffect(() => {
     async function load() {
