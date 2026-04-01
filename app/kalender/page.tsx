@@ -11,9 +11,16 @@ const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
 const DAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 const DAY_LONG  = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
-interface Plan   { date: string; kcal_total: number; protein_total: number; cost_total: number }
+interface Plan   { date: string; kcal_total: number; protein_total: number; cost_total: number; meals?: { meal_type: string }[] }
 interface Marker { date: string; training: boolean; eingeladen: boolean }
 interface Goals  { kcal: number; protein: number }
+
+const REQUIRED_MEALS = ['fruehstueck', 'mittagessen', 'abendessen', 'snack']
+function isDayComplete(plan?: Plan) {
+  if (!plan?.meals) return false
+  const types = new Set(plan.meals.map(m => m.meal_type))
+  return REQUIRED_MEALS.every(t => types.has(t))
+}
 
 function toDateStr(d: Date) { return d.toISOString().split('T')[0] }
 function getMondayOfWeek(d: Date) {
@@ -167,9 +174,10 @@ function exportMonth(year: number, month: number, plans: Plan[], markers: Marker
 }
 
 // ── Day Popup ─────────────────────────────────────────────────
-function DayPopup({ dateStr, plan, marker, goals, onClose, onMarkerChange }: {
-  dateStr: string; plan?: Plan; marker?: Marker; goals: Goals
+function DayPopup({ dateStr, plan, marker, goals, isComplete, onClose, onMarkerChange, onAction }: {
+  dateStr: string; plan?: Plan; marker?: Marker; goals: Goals; isComplete: boolean
   onClose: () => void; onMarkerChange: () => void
+  onAction: (type: 'save' | 'load' | 'copy', dateStr: string) => void
 }) {
   const router = useRouter()
   const d = new Date(dateStr + 'T12:00:00')
@@ -266,12 +274,337 @@ function DayPopup({ dateStr, plan, marker, goals, onClose, onMarkerChange }: {
           </div>
         </div>
 
-        <div className="px-5 pb-5">
+        <div className="px-5 space-y-2">
+          {/* Vorlage laden */}
+          <button onClick={() => { onClose(); onAction('load', dateStr) }}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2"
+            style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
+            📋 Vorlage laden
+          </button>
+
+          {/* Save as template (only if day has data) */}
+          {plan && plan.kcal_total > 0 && (
+            <button onClick={() => { onClose(); onAction('save', dateStr) }}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2"
+              style={{ background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>
+              💾 Als Tagesvorlage speichern
+            </button>
+          )}
+
+          {/* Copy day (only if day has data) */}
+          {plan && plan.kcal_total > 0 && (
+            <button onClick={() => { onClose(); onAction('copy', dateStr) }}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2"
+              style={{ background: '#fffbeb', color: '#d97706', border: '1px solid #fde68a' }}>
+              📑 Tag kopieren nach…
+            </button>
+          )}
+
+          {isComplete && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: '#f0fdf4' }}>
+              <span className="text-sm" style={{ color: '#16a34a' }}>✓ Fertig geplant</span>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 pb-5 pt-2">
           <button onClick={() => router.push(`/tag/${dateStr}`)}
             className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all"
             style={{ background: '#475569' }}>
             Zum Tagesplan →
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Save Day as Template Modal ────────────────────────────────
+function SaveDayTemplateModal({ dateStr, onClose, onSaved }: {
+  dateStr: string; onClose: () => void; onSaved: () => void
+}) {
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!name.trim()) return
+    setSaving(true)
+    const { data: planData } = await supabase.from('meal_plans').select('id').eq('date', dateStr).single()
+    if (!planData) { setSaving(false); return }
+    const { data: meals } = await supabase.from('meals').select('*, meal_items(*)').eq('plan_id', planData.id)
+    if (!meals?.length) { setSaving(false); return }
+
+    const { data: template } = await supabase.from('plan_templates').insert({ name: name.trim(), type: 'day' }).select().single()
+    if (!template) { setSaving(false); return }
+    const { data: templateDay } = await supabase.from('plan_template_days').insert({ template_id: template.id, day_offset: 0 }).select().single()
+    if (!templateDay) { setSaving(false); return }
+
+    for (const meal of meals) {
+      const { data: tmplMeal } = await supabase.from('plan_template_meals').insert({
+        template_day_id: templateDay.id, meal_type: meal.meal_type, name: meal.name
+      }).select().single()
+      if (tmplMeal && meal.meal_items?.length) {
+        await supabase.from('plan_template_items').insert(
+          meal.meal_items.map((i: { food_id: string; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }) => ({
+            template_meal_id: tmplMeal.id, food_id: i.food_id, food_name: i.food_name,
+            amount: i.amount, unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost,
+          }))
+        )
+      }
+    }
+    setSaving(false); onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-xl" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+          <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>Tag als Vorlage speichern</h3>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg" style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs" style={{ color: '#64748b' }}>
+            Alle Mahlzeiten vom <span className="font-semibold">{new Date(dateStr + 'T12:00:00').toLocaleDateString('de-CH', { weekday: 'long', day: 'numeric', month: 'long' })}</span> werden als Tagesvorlage gespeichert.
+          </p>
+          <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Name der Vorlage"
+            onKeyDown={e => e.key === 'Enter' && save()}
+            className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+            style={{ border: '1px solid #e2e8f0', color: '#1e293b' }} />
+        </div>
+        <div className="px-5 pb-5 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ background: '#f1f5f9', color: '#64748b' }}>Abbrechen</button>
+          <button onClick={save} disabled={!name.trim() || saving} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+            style={{ background: '#4f46e5' }}>{saving ? 'Speichern…' : 'Speichern'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Load Template Modal ───────────────────────────────────────
+interface PlanTemplate {
+  id: string; name: string; type: 'day' | 'week'; created_at: string
+  plan_template_days: {
+    id: string; day_offset: number
+    plan_template_meals: {
+      id: string; meal_type: string; name: string
+      plan_template_items: { id: string; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }[]
+    }[]
+  }[]
+}
+
+function LoadTemplateModal({ dateStr, onClose, onLoaded }: {
+  dateStr: string; onClose: () => void; onLoaded: () => void
+}) {
+  const [templates, setTemplates] = useState<PlanTemplate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [applying, setApplying] = useState<string | null>(null)
+  const [tab, setTab] = useState<'day' | 'week'>('day')
+
+  useEffect(() => {
+    supabase.from('plan_templates')
+      .select('*, plan_template_days(*, plan_template_meals(*, plan_template_items(*)))')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { setTemplates((data as PlanTemplate[]) || []); setLoading(false) })
+  }, [])
+
+  async function apply(template: PlanTemplate) {
+    setApplying(template.id)
+    for (const day of template.plan_template_days || []) {
+      const dateObj = new Date(dateStr + 'T12:00:00')
+      dateObj.setDate(dateObj.getDate() + day.day_offset)
+      const dayStr = toDateStr(dateObj)
+
+      let planId: string
+      const { data: existing } = await supabase.from('meal_plans').select('id').eq('date', dayStr).maybeSingle()
+      if (existing) {
+        planId = existing.id
+      } else {
+        const { data: created } = await supabase.from('meal_plans').insert({ date: dayStr, kcal_total: 0, protein_total: 0, cost_total: 0 }).select().single()
+        planId = created!.id
+      }
+
+      for (const meal of day.plan_template_meals || []) {
+        const items = meal.plan_template_items || []
+        const totals = items.reduce((acc, i) => ({
+          kcal: acc.kcal + Number(i.kcal), protein: acc.protein + Number(i.protein), cost: acc.cost + Number(i.cost)
+        }), { kcal: 0, protein: 0, cost: 0 })
+
+        const { data: newMeal } = await supabase.from('meals').insert({
+          plan_id: planId, meal_type: meal.meal_type, name: meal.name,
+          kcal_total: totals.kcal, protein_total: totals.protein, cost_total: totals.cost
+        }).select().single()
+
+        if (newMeal && items.length) {
+          await supabase.from('meal_items').insert(items.map(i => ({
+            meal_id: newMeal.id, food_id: null, food_name: i.food_name,
+            amount: i.amount, unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost
+          })))
+        }
+      }
+
+      // Recalculate
+      const { data: allMeals } = await supabase.from('meals').select('kcal_total,protein_total,cost_total').eq('plan_id', planId)
+      const t = (allMeals || []).reduce((acc, m) => ({
+        kcal: acc.kcal + Number(m.kcal_total), protein: acc.protein + Number(m.protein_total), cost: acc.cost + Number(m.cost_total)
+      }), { kcal: 0, protein: 0, cost: 0 })
+      await supabase.from('meal_plans').update({ kcal_total: t.kcal, protein_total: t.protein, cost_total: t.cost }).eq('id', planId)
+    }
+    setApplying(null); onLoaded()
+  }
+
+  const dayTemplates = templates.filter(t => t.type === 'day')
+  const weekTemplates = templates.filter(t => t.type === 'week')
+  const currentList = tab === 'day' ? dayTemplates : weekTemplates
+
+  const targetLabel = new Date(dateStr + 'T12:00:00').toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'short' })
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
+      <div className="w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl overflow-hidden shadow-xl" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>Vorlage laden</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>
+              {tab === 'day' ? `Für ${targetLabel}` : `Ab ${targetLabel} (7 Tage)`}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg" style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 mx-5 mt-3 rounded-xl" style={{ background: '#f1f5f9' }}>
+          {([['day', 'Tagesplan'] as const, ['week', 'Wochenplan'] as const]).map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className="flex-1 py-2 text-xs rounded-lg font-semibold transition-all"
+              style={tab === key ? { background: 'white', color: '#1e293b', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } : { color: '#94a3b8' }}>
+              {label} ({key === 'day' ? dayTemplates.length : weekTemplates.length})
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {loading && <p className="text-center text-sm py-8" style={{ color: '#94a3b8' }}>Laden…</p>}
+          {!loading && currentList.length === 0 && (
+            <p className="text-center text-sm py-8" style={{ color: '#94a3b8' }}>
+              Keine {tab === 'day' ? 'Tages' : 'Wochen'}vorlagen vorhanden.
+            </p>
+          )}
+          {currentList.map(tmpl => {
+            const allMeals = tmpl.plan_template_days.flatMap(d => d.plan_template_meals || [])
+            const allItems = allMeals.flatMap(m => m.plan_template_items || [])
+            const totalKcal = allItems.reduce((s, i) => s + Number(i.kcal), 0)
+            const totalProtein = allItems.reduce((s, i) => s + Number(i.protein), 0)
+            const daysCount = tmpl.plan_template_days.length
+
+            return (
+              <div key={tmpl.id} className="rounded-xl p-4" style={{ background: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <span className="text-sm font-bold" style={{ color: '#1e293b' }}>{tmpl.name}</span>
+                    <div className="flex gap-3 mt-1 text-xs" style={{ color: '#64748b' }}>
+                      <span>{Math.round(totalKcal)} kcal</span>
+                      <span>{Math.round(totalProtein * 10) / 10}g P</span>
+                      {tmpl.type === 'week' && <span>{daysCount} Tage</span>}
+                      <span>{allMeals.length} Mahlzeiten</span>
+                    </div>
+                  </div>
+                  <button onClick={() => apply(tmpl)} disabled={applying !== null}
+                    className="text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40"
+                    style={{ background: '#16a34a' }}>
+                    {applying === tmpl.id ? 'Laden…' : 'Anwenden'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {allMeals.map(m => (
+                    <span key={m.id} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#e2e8f0', color: '#475569' }}>
+                      {m.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Copy Day Modal ────────────────────────────────────────────
+function CopyDayModal({ sourceDate, onClose, onCopied }: {
+  sourceDate: string; onClose: () => void; onCopied: () => void
+}) {
+  const [targetDate, setTargetDate] = useState('')
+  const [copying, setCopying] = useState(false)
+
+  async function copy() {
+    if (!targetDate || targetDate === sourceDate) return
+    setCopying(true)
+
+    const { data: sourcePlan } = await supabase.from('meal_plans').select('id').eq('date', sourceDate).single()
+    if (!sourcePlan) { setCopying(false); return }
+    const { data: meals } = await supabase.from('meals').select('*, meal_items(*)').eq('plan_id', sourcePlan.id)
+    if (!meals?.length) { setCopying(false); return }
+
+    let targetPlanId: string
+    const { data: existing } = await supabase.from('meal_plans').select('id').eq('date', targetDate).maybeSingle()
+    if (existing) {
+      targetPlanId = existing.id
+    } else {
+      const { data: created } = await supabase.from('meal_plans').insert({ date: targetDate, kcal_total: 0, protein_total: 0, cost_total: 0 }).select().single()
+      targetPlanId = created!.id
+    }
+
+    for (const meal of meals) {
+      const { data: newMeal } = await supabase.from('meals').insert({
+        plan_id: targetPlanId, meal_type: meal.meal_type, name: meal.name,
+        kcal_total: meal.kcal_total, protein_total: meal.protein_total, cost_total: meal.cost_total
+      }).select().single()
+      if (newMeal && meal.meal_items?.length) {
+        await supabase.from('meal_items').insert(
+          meal.meal_items.map((i: { food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }) => ({
+            meal_id: newMeal.id, food_id: i.food_id, food_name: i.food_name,
+            amount: i.amount, unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost
+          }))
+        )
+      }
+    }
+
+    const { data: allMeals } = await supabase.from('meals').select('kcal_total,protein_total,cost_total').eq('plan_id', targetPlanId)
+    const t = (allMeals || []).reduce((acc, m) => ({
+      kcal: acc.kcal + Number(m.kcal_total), protein: acc.protein + Number(m.protein_total), cost: acc.cost + Number(m.cost_total)
+    }), { kcal: 0, protein: 0, cost: 0 })
+    await supabase.from('meal_plans').update({ kcal_total: t.kcal, protein_total: t.protein, cost_total: t.cost }).eq('id', targetPlanId)
+
+    setCopying(false); onCopied()
+  }
+
+  const sourceLabel = new Date(sourceDate + 'T12:00:00').toLocaleDateString('de-CH', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-xl" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+          <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>Tag kopieren</h3>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg" style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs" style={{ color: '#64748b' }}>
+            Alle Mahlzeiten vom <span className="font-semibold">{sourceLabel}</span> werden kopiert nach:
+          </p>
+          <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+            style={{ border: '1px solid #e2e8f0', color: '#1e293b' }} />
+        </div>
+        <div className="px-5 pb-5 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ background: '#f1f5f9', color: '#64748b' }}>Abbrechen</button>
+          <button onClick={copy} disabled={!targetDate || targetDate === sourceDate || copying}
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+            style={{ background: '#d97706' }}>{copying ? 'Kopieren…' : 'Kopieren'}</button>
         </div>
       </div>
     </div>
@@ -286,6 +619,7 @@ export default function KalenderPage() {
   const [goals, setGoals]     = useState<Goals>({ kcal: 2000, protein: 150 })
   const [popup, setPopup]     = useState<string | null>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [templateAction, setTemplateAction] = useState<{ type: 'save' | 'load' | 'copy'; dateStr: string } | null>(null)
   const exportRef = useRef<HTMLDivElement>(null)
 
   const today = new Date(), todayStr = toDateStr(today)
@@ -305,7 +639,7 @@ export default function KalenderPage() {
     const start = toDateStr(new Date(year, month, 1))
     const end   = toDateStr(new Date(year, month + 1, 0))
     const [planRes, markerRes, settingsData] = await Promise.all([
-      supabase.from('meal_plans').select('date,kcal_total,protein_total,cost_total').gte('date', start).lte('date', end),
+      supabase.from('meal_plans').select('date,kcal_total,protein_total,cost_total,meals(meal_type)').gte('date', start).lte('date', end),
       supabase.from('day_markers').select('date,training,eingeladen').gte('date', start).lte('date', end),
       loadSettings(),
     ])
@@ -374,6 +708,7 @@ export default function KalenderPage() {
         {[
           { color: '#bbf7d0', label: 'Vollständig' },
           { color: '#fde68a',  label: 'Teilweise' },
+          { color: '#16a34a',  label: 'Fertig ✓', dot: true },
           { color: '#2563eb',  label: 'Training', dot: true },
           { color: '#7c3aed',  label: 'Eingeladen', dot: true },
         ].map(l => (
@@ -431,13 +766,12 @@ export default function KalenderPage() {
                   {day.getDate()}
                 </span>
 
-                {/* Marker dots */}
-                {(marker?.training || marker?.eingeladen) && (
-                  <div className="flex gap-1 mb-1">
-                    {marker.training   && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#2563eb' }} />}
-                    {marker.eingeladen && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#7c3aed' }} />}
-                  </div>
-                )}
+                {/* Marker dots + complete check */}
+                <div className="flex gap-1 mb-1 items-center">
+                  {marker?.training   && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#2563eb' }} />}
+                  {marker?.eingeladen && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#7c3aed' }} />}
+                  {isDayComplete(plan) && <span className="text-[10px] font-bold" style={{ color: '#16a34a' }}>✓</span>}
+                </div>
 
                 {/* Stats */}
                 {plan && plan.kcal_total > 0 && (
@@ -460,8 +794,37 @@ export default function KalenderPage() {
           plan={plans.find(p => p.date === popup)}
           marker={markers.find(m => m.date === popup)}
           goals={goals}
+          isComplete={isDayComplete(plans.find(p => p.date === popup))}
           onClose={() => setPopup(null)}
           onMarkerChange={loadAll}
+          onAction={(type, dateStr) => { setPopup(null); setTemplateAction({ type, dateStr }) }}
+        />
+      )}
+
+      {/* Save Day Template Modal */}
+      {templateAction?.type === 'save' && (
+        <SaveDayTemplateModal
+          dateStr={templateAction.dateStr}
+          onClose={() => setTemplateAction(null)}
+          onSaved={() => { setTemplateAction(null) }}
+        />
+      )}
+
+      {/* Load Template Modal */}
+      {templateAction?.type === 'load' && (
+        <LoadTemplateModal
+          dateStr={templateAction.dateStr}
+          onClose={() => setTemplateAction(null)}
+          onLoaded={() => { setTemplateAction(null); loadAll() }}
+        />
+      )}
+
+      {/* Copy Day Modal */}
+      {templateAction?.type === 'copy' && (
+        <CopyDayModal
+          sourceDate={templateAction.dateStr}
+          onClose={() => setTemplateAction(null)}
+          onCopied={() => { setTemplateAction(null); loadAll() }}
         />
       )}
     </div>

@@ -18,6 +18,7 @@ function toBaseAmount(amount: number, unit: string): number {
     case 'ml': return amount
     case 'dl': return amount * 100
     case 'l':  return amount * 1000
+    case 'stk': return amount
     default:   return amount
   }
 }
@@ -31,6 +32,9 @@ function getMondayOfWeek(d: Date) {
 function toDateStr(d: Date) { return d.toISOString().split('T')[0] }
 
 function formatAmount(amount: number, baseUnit: string): string {
+  if (baseUnit === 'stk') {
+    return `${amount % 1 === 0 ? amount : amount.toFixed(1)} Stk.`
+  }
   if (baseUnit === 'ml') {
     if (amount >= 1000) return `${(amount / 1000).toFixed(2).replace(/\.?0+$/, '')} l`
     if (amount >= 100)  return `${(amount / 100).toFixed(1).replace(/\.?0+$/, '')} dl`
@@ -109,7 +113,7 @@ export default function EinkaufslistePage() {
     mealItems.forEach((item: any) => {
       const key      = item.food_id || item.food_name
       const foodsUnit = Array.isArray(item.foods) ? item.foods[0]?.unit : item.foods?.unit
-      const baseUnit = foodsUnit || (item.unit === 'g' ? 'g' : 'ml')
+      const baseUnit = foodsUnit || (item.unit === 'stk' ? 'stk' : item.unit === 'g' ? 'g' : 'ml')
       const baseAmt  = toBaseAmount(item.amount, item.unit)
 
       if (!grouped[key]) {

@@ -39,6 +39,9 @@ export default function TagPage() {
   const [goals, setGoals]         = useState({ kcal: 2000, protein: 150 })
   const [editingItemId, setEditingItemId]       = useState<string | null>(null)
   const [editingItemAmount, setEditingItemAmount] = useState('')
+  const [savingTemplate, setSavingTemplate] = useState<'day' | 'week' | null>(null)
+  const [templateName, setTemplateName] = useState('')
+  const [templateSaving, setTemplateSaving] = useState(false)
 
   const dateObj       = new Date(datum + 'T12:00:00')
   const todayStr      = toDateStr(new Date())
@@ -80,7 +83,7 @@ export default function TagPage() {
   }
 
   async function handleSave({ mealName, items, totals, saveAsTemplate, templateName, mealType }: {
-    mealName: string; items: { food_id: string; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }[];
+    mealName: string; items: { food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number; isCustom?: boolean }[];
     totals: { kcal: number; protein: number; cost: number }; saveAsTemplate: boolean; templateName: string; mealType: string
   }) {
     let cur = plan
@@ -89,10 +92,16 @@ export default function TagPage() {
       cur = data
     }
     const { data: meal } = await supabase.from('meals').insert({ plan_id: cur!.id, meal_type: mealType, name: mealName, kcal_total: totals.kcal, protein_total: totals.protein, cost_total: totals.cost }).select().single()
-    await supabase.from('meal_items').insert(items.map(item => ({ meal_id: meal.id, ...item })))
+    await supabase.from('meal_items').insert(items.map(item => ({
+      meal_id: meal.id, food_id: item.food_id, food_name: item.food_name,
+      amount: item.amount, unit: item.unit, kcal: item.kcal, protein: item.protein, cost: item.cost,
+    })))
     if (saveAsTemplate && templateName) {
       const { data: tmpl } = await supabase.from('meal_templates').insert({ name: templateName, meal_type: mealType }).select().single()
-      await supabase.from('meal_template_items').insert(items.map(item => ({ template_id: tmpl.id, food_id: item.food_id, amount: item.amount, unit: item.unit })))
+      const templateItems = items.filter(item => item.food_id != null)
+      if (templateItems.length > 0) {
+        await supabase.from('meal_template_items').insert(templateItems.map(item => ({ template_id: tmpl.id, food_id: item.food_id, amount: item.amount, unit: item.unit })))
+      }
     }
     await recalc(cur!.id, [...meals, { kcal_total: totals.kcal, protein_total: totals.protein, cost_total: totals.cost } as Meal])
     setAddingFor(null); await loadData()
@@ -155,6 +164,63 @@ export default function TagPage() {
   }
 
   const totals = sumItems(meals.map(m => ({ kcal: m.kcal_total, protein: m.protein_total, cost: m.cost_total })))
+
+  const REQUIRED_MEALS = ['fruehstueck', 'mittagessen', 'abendessen', 'snack']
+  const mealTypesPresent = new Set(meals.map(m => m.meal_type))
+  const isDayComplete = REQUIRED_MEALS.every(t => mealTypesPresent.has(t))
+
+  async function saveDayAsTemplate(name: string) {
+    if (!name.trim() || !plan) return
+    setTemplateSaving(true)
+    const { data: template } = await supabase.from('plan_templates').insert({ name: name.trim(), type: 'day' }).select().single()
+    if (!template) { setTemplateSaving(false); return }
+    const { data: templateDay } = await supabase.from('plan_template_days').insert({ template_id: template.id, day_offset: 0 }).select().single()
+    if (!templateDay) { setTemplateSaving(false); return }
+    for (const meal of meals) {
+      const { data: tmplMeal } = await supabase.from('plan_template_meals').insert({
+        template_day_id: templateDay.id, meal_type: meal.meal_type, name: meal.name
+      }).select().single()
+      if (tmplMeal && meal.meal_items?.length) {
+        await supabase.from('plan_template_items').insert(
+          meal.meal_items.map(i => ({
+            template_meal_id: tmplMeal.id, food_id: null, food_name: i.food_name,
+            amount: i.amount, unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost,
+          }))
+        )
+      }
+    }
+    setTemplateSaving(false); setSavingTemplate(null); setTemplateName('')
+  }
+
+  async function saveWeekAsTemplate(name: string) {
+    if (!name.trim()) return
+    setTemplateSaving(true)
+    const { data: template } = await supabase.from('plan_templates').insert({ name: name.trim(), type: 'week' }).select().single()
+    if (!template) { setTemplateSaving(false); return }
+    for (let i = 0; i < weekDays.length; i++) {
+      const dayStr = toDateStr(weekDays[i])
+      const { data: dayPlan } = await supabase.from('meal_plans').select('id').eq('date', dayStr).maybeSingle()
+      if (!dayPlan) continue
+      const { data: dayMeals } = await supabase.from('meals').select('*, meal_items(*)').eq('plan_id', dayPlan.id)
+      if (!dayMeals?.length) continue
+      const { data: templateDay } = await supabase.from('plan_template_days').insert({ template_id: template.id, day_offset: i }).select().single()
+      if (!templateDay) continue
+      for (const meal of dayMeals) {
+        const { data: tmplMeal } = await supabase.from('plan_template_meals').insert({
+          template_day_id: templateDay.id, meal_type: meal.meal_type, name: meal.name
+        }).select().single()
+        if (tmplMeal && meal.meal_items?.length) {
+          await supabase.from('plan_template_items').insert(
+            meal.meal_items.map((mi: MealItem) => ({
+              template_meal_id: tmplMeal.id, food_id: null, food_name: mi.food_name,
+              amount: mi.amount, unit: mi.unit, kcal: mi.kcal, protein: mi.protein, cost: mi.cost,
+            }))
+          )
+        }
+      }
+    }
+    setTemplateSaving(false); setSavingTemplate(null); setTemplateName('')
+  }
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -282,6 +348,22 @@ export default function TagPage() {
               )
             })}
           </div>
+
+          {/* Save week as template (when all 7 days have data) */}
+          {weekPlans.filter(p => p.kcal_total > 0).length === 7 && (
+            <div className="flex items-center justify-between rounded-2xl px-5 py-3 mt-4"
+              style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}>
+              <div>
+                <span className="text-sm font-bold" style={{ color: '#4f46e5' }}>✓ Woche vollständig</span>
+                <p className="text-xs mt-0.5" style={{ color: '#64748b' }}>Alle 7 Tage geplant</p>
+              </div>
+              <button onClick={() => setSavingTemplate('week')}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white"
+                style={{ background: '#4f46e5' }}>
+                💾 Als Wochenplan speichern
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         // ── Day view ──────────────────────────────────────────
@@ -311,6 +393,21 @@ export default function TagPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Fertig geplant indicator + save as template */}
+          {isDayComplete && (
+            <div className="flex items-center justify-between rounded-2xl px-5 py-3 mb-3"
+              style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold" style={{ color: '#16a34a' }}>✓ Fertig geplant</span>
+              </div>
+              <button onClick={() => setSavingTemplate('day')}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                style={{ background: 'white', color: '#4f46e5', border: '1px solid #c7d2fe' }}>
+                💾 Als Vorlage speichern
+              </button>
             </div>
           )}
 
@@ -405,6 +502,40 @@ export default function TagPage() {
 
       {addingFor && (
         <MealModal mealType={addingFor} onClose={() => setAddingFor(null)} onSave={handleSave} />
+      )}
+
+      {/* Save Template Modal */}
+      {savingTemplate && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+          style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
+          <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-xl" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+              <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>
+                {savingTemplate === 'day' ? 'Tagesvorlage speichern' : 'Wochenplan speichern'}
+              </h3>
+              <button onClick={() => { setSavingTemplate(null); setTemplateName('') }} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg" style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-xs" style={{ color: '#64748b' }}>
+                {savingTemplate === 'day'
+                  ? `Alle Mahlzeiten von ${formattedDate} werden gespeichert.`
+                  : `Alle 7 Tage der aktuellen Woche werden als Wochenplan gespeichert.`}
+              </p>
+              <input type="text" value={templateName} onChange={e => setTemplateName(e.target.value)}
+                placeholder="Name der Vorlage" autoFocus
+                onKeyDown={e => e.key === 'Enter' && (savingTemplate === 'day' ? saveDayAsTemplate(templateName) : saveWeekAsTemplate(templateName))}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: '1px solid #e2e8f0', color: '#1e293b' }} />
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button onClick={() => { setSavingTemplate(null); setTemplateName('') }} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ background: '#f1f5f9', color: '#64748b' }}>Abbrechen</button>
+              <button onClick={() => savingTemplate === 'day' ? saveDayAsTemplate(templateName) : saveWeekAsTemplate(templateName)}
+                disabled={!templateName.trim() || templateSaving}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+                style={{ background: '#4f46e5' }}>{templateSaving ? 'Speichern…' : 'Speichern'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
