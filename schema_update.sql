@@ -142,3 +142,37 @@ CREATE TABLE IF NOT EXISTS event_meal_rules (
 ALTER TABLE event_meal_rules ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow_all" ON event_meal_rules;
 CREATE POLICY "allow_all" ON event_meal_rules FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- Notizen (Scratchpad für Menü-Ideen)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS notes (
+  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title      TEXT NOT NULL DEFAULT '',
+  freetext   TEXT DEFAULT '',
+  meal_type  TEXT CHECK (meal_type IN ('fruehstueck', 'mittagessen', 'abendessen', 'snack')),
+  status     TEXT DEFAULT 'idee' CHECK (status IN ('idee', 'zutaten_erfasst', 'bereit')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS note_items (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  note_id     UUID REFERENCES notes(id) ON DELETE CASCADE,
+  food_id     UUID REFERENCES foods(id) ON DELETE SET NULL,
+  food_name   TEXT NOT NULL,
+  amount      DECIMAL(8,2),
+  unit        TEXT DEFAULT 'g' CHECK (unit IN ('g', 'ml', 'dl', 'l', 'stk')),
+  is_resolved BOOLEAN DEFAULT FALSE,
+  sort_order  INT DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE notes      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE note_items ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "allow_all" ON notes;
+DROP POLICY IF EXISTS "allow_all" ON note_items;
+CREATE POLICY "allow_all" ON notes      FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON note_items FOR ALL TO anon USING (true) WITH CHECK (true);

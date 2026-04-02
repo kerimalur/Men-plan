@@ -54,6 +54,7 @@ export default function EinkaufslistePage() {
   const [syncItems, setSyncItems] = useState<SyncItem[]>([])
   const [showSync, setShowSync]   = useState(false)
   const [weekStart, setWeekStart] = useState(() => toDateStr(getMondayOfWeek(new Date())))
+  const [copied, setCopied] = useState(false)
   const router = useRouter()
 
   useSwipe({
@@ -151,6 +152,51 @@ export default function EinkaufslistePage() {
     setShowSync(false)
   }
 
+  // ── Bring! Deep-Link Export ──────────────────────────────────
+  function buildBringDeepLink() {
+    const activeItems = items.filter(i => !i.checked)
+    if (activeItems.length === 0) return null
+    // Bring! recipe deeplink format: items as JSON array
+    const bringItems = activeItems.map(i => ({
+      itemId: i.item,
+      spec: i.quantity || '',
+    }))
+    const payload = {
+      items: bringItems,
+      source: 'Menüplan',
+    }
+    const encoded = encodeURIComponent(JSON.stringify(payload))
+    return `https://api.getbring.com/rest/bringrecipes/deeplink?source=men%C3%BCplan&items=${encoded}`
+  }
+
+  function exportToBring() {
+    const activeItems = items.filter(i => !i.checked)
+    if (activeItems.length === 0) return
+    // Build a Bring!-compatible URL with items
+    // Format: https://api.getbring.com/rest/bringrecipes/deeplink
+    const itemsParam = activeItems.map(i => {
+      const name = encodeURIComponent(i.item)
+      const spec = encodeURIComponent(i.quantity || '')
+      return `${name},${spec}`
+    }).join('|')
+    const url = `https://api.getbring.com/rest/bringrecipes/deeplink?source=${encodeURIComponent('Menüplan')}&items=${itemsParam}`
+    window.open(url, '_blank')
+  }
+
+  async function copyListAsText() {
+    const activeItems = items.filter(i => !i.checked)
+    if (activeItems.length === 0) return
+    const text = activeItems.map(i => i.quantity ? `${i.item} – ${i.quantity}` : i.item).join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback: prompt
+      prompt('Liste kopieren:', text)
+    }
+  }
+
   const unchecked = items.filter(i => !i.checked)
   const checked   = items.filter(i => i.checked)
 
@@ -189,7 +235,7 @@ export default function EinkaufslistePage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Woche synchronisieren
+            Sync
           </button>
         </div>
       </div>
@@ -299,6 +345,32 @@ export default function EinkaufslistePage() {
           +
         </button>
       </form>
+
+      {/* Export buttons (Bring! + Copy) */}
+      {unchecked.length > 0 && (
+        <div className="flex gap-2 mb-5">
+          <button
+            onClick={exportToBring}
+            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+            style={{ background: '#4CAF50', color: 'white' }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            In Bring! öffnen
+          </button>
+          <button
+            onClick={copyListAsText}
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+            style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569' }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+            </svg>
+            {copied ? '✓ Kopiert!' : 'Kopieren'}
+          </button>
+        </div>
+      )}
 
       {/* List */}
       <div
