@@ -76,11 +76,25 @@ export default function NotizenPage() {
   useEffect(() => { loadNotes() }, [])
 
   async function loadNotes() {
-    const { data } = await supabase
+    const { data: notesData } = await supabase
       .from('notes')
-      .select('*, note_items(*)')
+      .select('*')
       .order('updated_at', { ascending: false })
-    setNotes(data || [])
+    if (!notesData) { setNotes([]); setLoading(false); return }
+    // Load items separately to avoid PostgREST relation cache issues
+    const noteIds = notesData.map(n => n.id)
+    const { data: itemsData } = noteIds.length > 0
+      ? await supabase.from('note_items').select('*').in('note_id', noteIds)
+      : { data: [] }
+    const itemsByNote = new Map<string, NoteItem[]>()
+    ;(itemsData || []).forEach((item: NoteItem) => {
+      const list = itemsByNote.get(item.note_id) || []
+      list.push(item)
+      itemsByNote.set(item.note_id, list)
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const merged = notesData.map((n: any) => ({ ...n, note_items: itemsByNote.get(n.id) || [] }))
+    setNotes(merged)
     setLoading(false)
   }
 
@@ -88,14 +102,15 @@ export default function NotizenPage() {
     const { data, error } = await supabase
       .from('notes')
       .insert({ title: '', freetext: '', status: 'idee' })
-      .select('*, note_items(*)')
+      .select('*')
       .single()
     if (error) {
       alert('Fehler: ' + error.message + '\n\nHast du das SQL für die notes-Tabelle in Supabase ausgeführt?')
       return
     }
     if (data) {
-      setNotes(prev => [data, ...prev])
+      const noteWithItems = { ...data, note_items: [] }
+      setNotes(prev => [noteWithItems, ...prev])
       setOpenNoteId(data.id)
     }
   }
