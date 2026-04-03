@@ -85,11 +85,15 @@ export default function NotizenPage() {
   }
 
   async function createNote() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('notes')
       .insert({ title: '', freetext: '', status: 'idee' })
       .select('*, note_items(*)')
       .single()
+    if (error) {
+      alert('Fehler: ' + error.message + '\n\nHast du das SQL für die notes-Tabelle in Supabase ausgeführt?')
+      return
+    }
     if (data) {
       setNotes(prev => [data, ...prev])
       setOpenNoteId(data.id)
