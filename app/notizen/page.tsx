@@ -273,6 +273,15 @@ function NoteDetail({ note, onBack, onDelete, onUpdated }: {
   const [actionLoading, setActionLoading] = useState(false)
   const [actionMsg, setActionMsg] = useState('')
 
+  // Save-to-DB popup state
+  const [dbPromptItem, setDbPromptItem] = useState<NoteItem | null>(null)
+  const [dbPromptStep, setDbPromptStep] = useState<'ask' | 'details'>('ask')
+  const [dbKcal, setDbKcal] = useState('')
+  const [dbProtein, setDbProtein] = useState('')
+  const [dbCost, setDbCost] = useState('')
+  const [dbUnit, setDbUnit] = useState('g')
+  const [dbSaving, setDbSaving] = useState(false)
+
   // Sync title changes back when note changes
   useEffect(() => {
     setTitle(note.title)
@@ -370,6 +379,44 @@ function NoteDetail({ note, onBack, onDelete, onUpdated }: {
     setAmount('')
     setUnit('g')
     setShowAddItem(false)
+
+    // After adding a free-text item, prompt to save to DB
+    if (addMode === 'custom' && data) {
+      setDbPromptItem(data)
+      setDbPromptStep('ask')
+      setDbUnit(data.unit || 'g')
+    }
+
+    onUpdated()
+  }
+
+  /* ── Save custom item to DB ────────────────────────── */
+  async function saveItemToDB() {
+    if (!dbPromptItem) return
+    setDbSaving(true)
+    const { data: food } = await supabase.from('foods').insert({
+      name: dbPromptItem.food_name,
+      calories_per_100: parseFloat(dbKcal) || 0,
+      protein_per_100:  parseFloat(dbProtein) || 0,
+      cost_per_100:     parseFloat(dbCost) || 0,
+      unit: dbUnit,
+    }).select('*').single()
+
+    if (food) {
+      // Link the note item to the new food
+      await supabase.from('note_items').update({ food_id: food.id, is_resolved: true }).eq('id', dbPromptItem.id)
+      const newItems = items.map(i =>
+        i.id === dbPromptItem.id ? { ...i, food_id: food.id, is_resolved: true } : i
+      )
+      setItems(newItems)
+      const newStatus = computeStatus(newItems)
+      setStatus(newStatus)
+      await supabase.from('notes').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', note.id)
+    }
+
+    setDbSaving(false)
+    setDbPromptItem(null)
+    setDbKcal(''); setDbProtein(''); setDbCost('')
     onUpdated()
   }
 
@@ -573,6 +620,115 @@ function NoteDetail({ note, onBack, onDelete, onUpdated }: {
 
   return (
     <div>
+      {/* ── Popup: In Datenbank aufnehmen? ─────────── */}
+      {dbPromptItem && dbPromptStep === 'ask' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)' }}>
+          <div className="rounded-2xl p-6 w-full max-w-sm"
+            style={{ background: 'white', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
+            <h3 className="text-base font-semibold mb-2" style={{ color: '#1e293b' }}>
+              In die Datenbank aufnehmen?
+            </h3>
+            <p className="text-sm mb-5" style={{ color: '#64748b' }}>
+              Möchtest du <strong style={{ color: '#1e293b' }}>{dbPromptItem.food_name}</strong> als neues Lebensmittel in die Datenbank speichern?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setDbPromptItem(null) }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
+                style={{ background: '#f1f5f9', color: '#64748b' }}
+              >
+                Nein
+              </button>
+              <button
+                onClick={() => setDbPromptStep('details')}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
+                style={{ background: '#475569' }}
+              >
+                Ja
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Popup: Nährwerte & Preis eingeben ────────── */}
+      {dbPromptItem && dbPromptStep === 'details' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)' }}>
+          <div className="rounded-2xl p-6 w-full max-w-sm"
+            style={{ background: 'white', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
+            <h3 className="text-base font-semibold mb-1" style={{ color: '#1e293b' }}>
+              {dbPromptItem.food_name}
+            </h3>
+            <p className="text-xs mb-4" style={{ color: '#94a3b8' }}>Nährwerte pro 100g / 100ml / 1 Stk.</p>
+
+            <div className="grid gap-3 mb-4">
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: '#475569' }}>Einheit</label>
+                <select
+                  value={dbUnit}
+                  onChange={e => setDbUnit(e.target.value)}
+                  style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: '0.75rem', padding: '0.5rem 0.75rem', fontSize: '0.875rem', outline: 'none', width: '100%' }}
+                >
+                  <option value="g">g (Gramm)</option>
+                  <option value="ml">ml (Milliliter)</option>
+                  <option value="stk">stk (Stück)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: '#475569' }}>Kalorien pro 100 {dbUnit}</label>
+                <input
+                  type="number"
+                  value={dbKcal}
+                  onChange={e => setDbKcal(e.target.value)}
+                  placeholder="z.B. 89"
+                  style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: '0.75rem', padding: '0.5rem 0.75rem', fontSize: '0.875rem', outline: 'none', width: '100%' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: '#475569' }}>Protein pro 100 {dbUnit} (g)</label>
+                <input
+                  type="number"
+                  value={dbProtein}
+                  onChange={e => setDbProtein(e.target.value)}
+                  placeholder="z.B. 1.1"
+                  style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: '0.75rem', padding: '0.5rem 0.75rem', fontSize: '0.875rem', outline: 'none', width: '100%' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: '#475569' }}>Preis pro 100 {dbUnit} (CHF)</label>
+                <input
+                  type="number"
+                  value={dbCost}
+                  onChange={e => setDbCost(e.target.value)}
+                  placeholder="z.B. 0.15"
+                  style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: '0.75rem', padding: '0.5rem 0.75rem', fontSize: '0.875rem', outline: 'none', width: '100%' }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setDbPromptItem(null); setDbKcal(''); setDbProtein(''); setDbCost('') }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
+                style={{ background: '#f1f5f9', color: '#64748b' }}
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={saveItemToDB}
+                disabled={dbSaving}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
+                style={{ background: '#475569' }}
+              >
+                {dbSaving ? 'Speichern…' : 'Speichern'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Back + actions header */}
       <div className="flex items-center gap-3 mb-4">
         <button onClick={() => { if (dirty) saveNote().then(onBack); else onBack() }}
