@@ -101,7 +101,7 @@ export default function NotizenPage() {
   async function createNote() {
     const { data, error } = await supabase
       .from('notes')
-      .insert({ title: '', freetext: '', status: 'idee' })
+      .insert({ status: 'idee' })
       .select('*')
       .single()
     if (error) {
