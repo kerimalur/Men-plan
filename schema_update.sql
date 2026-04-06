@@ -2,6 +2,20 @@
 -- Menüplan – Schema Update (in Supabase SQL-Editor ausführen)
 -- ============================================================
 
+-- ============================================================
+-- Hauptmahlzeit: Mittagessen + Abendessen in meal_templates zusammenführen
+-- ============================================================
+
+-- Constraint temporär entfernen (Name kann variieren)
+ALTER TABLE meal_templates DROP CONSTRAINT IF EXISTS meal_templates_meal_type_check;
+
+-- Bestehende Mittagessen- und Abendessen-Vorlagen migrieren
+UPDATE meal_templates SET meal_type = 'hauptmahlzeit' WHERE meal_type IN ('mittagessen', 'abendessen');
+
+-- Neuen Constraint mit 3 Typen setzen
+ALTER TABLE meal_templates ADD CONSTRAINT meal_templates_meal_type_check
+  CHECK (meal_type IN ('fruehstueck', 'hauptmahlzeit', 'snack'));
+
 -- Einstellungen (Ziele etc.)
 CREATE TABLE IF NOT EXISTS settings (
   key        TEXT PRIMARY KEY,

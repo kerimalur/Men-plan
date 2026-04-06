@@ -98,7 +98,8 @@ export default function TagPage() {
       amount: item.amount, unit: item.unit, kcal: item.kcal, protein: item.protein, cost: item.cost,
     })))
     if (saveAsTemplate && templateName) {
-      const { data: tmpl } = await supabase.from('meal_templates').insert({ name: templateName, meal_type: mealType }).select().single()
+      const tmplType = (mealType === 'mittagessen' || mealType === 'abendessen') ? 'hauptmahlzeit' : mealType
+      const { data: tmpl } = await supabase.from('meal_templates').insert({ name: templateName, meal_type: tmplType }).select().single()
       const templateItems = items.filter(item => item.food_id != null)
       if (templateItems.length > 0) {
         await supabase.from('meal_template_items').insert(templateItems.map(item => ({ template_id: tmpl.id, food_id: item.food_id, amount: item.amount, unit: item.unit })))

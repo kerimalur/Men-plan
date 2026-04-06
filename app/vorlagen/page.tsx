@@ -5,12 +5,14 @@ import { supabase } from '@/lib/supabase'
 import { calcNutrition, sumItems } from '@/lib/calculations'
 
 const MEAL_TYPE_LABELS: Record<string, string> = {
-  fruehstueck: 'Frühstück',
-  mittagessen: 'Mittagessen',
-  abendessen:  'Abendessen',
-  snack:       'Snack',
+  fruehstueck:   'Frühstück',
+  hauptmahlzeit: 'Hauptmahlzeit',
+  snack:         'Snack',
+  // legacy values (displayed grouped under Hauptmahlzeit)
+  mittagessen:   'Hauptmahlzeit',
+  abendessen:    'Hauptmahlzeit',
 }
-const MEAL_TYPE_ORDER = ['fruehstueck', 'mittagessen', 'abendessen', 'snack']
+const MEAL_TYPE_ORDER = ['fruehstueck', 'hauptmahlzeit', 'snack']
 
 interface Food {
   id: string; name: string; calories_per_100: number; protein_per_100: number; cost_per_100: number; unit: 'g' | 'ml' | 'stk'
@@ -313,7 +315,9 @@ function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Typ</label>
             <select value={mealType} onChange={e => setMealType(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
-              {MEAL_TYPE_ORDER.map(t => <option key={t} value={t}>{MEAL_TYPE_LABELS[t]}</option>)}
+              <option value="fruehstueck">Frühstück</option>
+              <option value="hauptmahlzeit">Hauptmahlzeit</option>
+              <option value="snack">Snack</option>
             </select>
           </div>
           <div className="rounded-lg p-4 space-y-3" style={{ border: '1px solid #f1f5f9', background: '#f8fafc' }}>
@@ -398,8 +402,9 @@ function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
 function TemplateDuplicateModal({ template, onClose, onSaved }: {
   template: Template; onClose: () => void; onSaved: () => void
 }) {
+  const dupeType = (template.meal_type === 'mittagessen' || template.meal_type === 'abendessen') ? 'hauptmahlzeit' : template.meal_type
   const [name, setName] = useState(template.name + ' (Kopie)')
-  const [mealType, setMealType] = useState(template.meal_type)
+  const [mealType, setMealType] = useState(dupeType)
   const [saving, setSaving] = useState(false)
 
   const inputStyle: React.CSSProperties = {
@@ -451,7 +456,9 @@ function TemplateDuplicateModal({ template, onClose, onSaved }: {
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Mahlzeit-Typ</label>
             <select value={mealType} onChange={e => setMealType(e.target.value)} style={selectStyle}>
-              {MEAL_TYPE_ORDER.map(t => <option key={t} value={t}>{MEAL_TYPE_LABELS[t]}</option>)}
+              <option value="fruehstueck">Frühstück</option>
+              <option value="hauptmahlzeit">Hauptmahlzeit</option>
+              <option value="snack">Snack</option>
             </select>
           </div>
           <p className="text-xs" style={{ color: '#94a3b8' }}>
@@ -516,7 +523,11 @@ export default function VorlagenPage() {
   }
 
   const grouped = MEAL_TYPE_ORDER.reduce<Record<string, Template[]>>((acc, type) => {
-    acc[type] = templates.filter(t => t.meal_type === type)
+    if (type === 'hauptmahlzeit') {
+      acc[type] = templates.filter(t => t.meal_type === 'hauptmahlzeit' || t.meal_type === 'mittagessen' || t.meal_type === 'abendessen')
+    } else {
+      acc[type] = templates.filter(t => t.meal_type === type)
+    }
     return acc
   }, {})
 
