@@ -394,6 +394,82 @@ function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
   )
 }
 
+// ── Template Duplicate Modal ──────────────────────────────────
+function TemplateDuplicateModal({ template, onClose, onSaved }: {
+  template: Template; onClose: () => void; onSaved: () => void
+}) {
+  const [name, setName] = useState(template.name + ' (Kopie)')
+  const [mealType, setMealType] = useState(template.meal_type)
+  const [saving, setSaving] = useState(false)
+
+  const inputStyle: React.CSSProperties = {
+    background: 'white', border: '1px solid #e2e8f0', color: '#1e293b',
+    borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: '0.875rem', outline: 'none', width: '100%',
+  }
+  const selectStyle: React.CSSProperties = {
+    background: 'white', border: '1px solid #e2e8f0', color: '#1e293b',
+    borderRadius: '0.5rem', padding: '0.5rem 0.5rem', fontSize: '0.875rem', outline: 'none', width: '100%',
+  }
+
+  async function save() {
+    if (!name.trim()) return
+    setSaving(true)
+    const { data: tmpl } = await supabase
+      .from('meal_templates')
+      .insert({ name: name.trim(), meal_type: mealType })
+      .select()
+      .single()
+    if (tmpl && template.meal_template_items.length > 0) {
+      await supabase.from('meal_template_items').insert(
+        template.meal_template_items.map(ti => ({
+          template_id: tmpl.id,
+          food_id: ti.foods.id,
+          amount: ti.amount,
+          unit: ti.unit,
+        }))
+      )
+    }
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
+      <div className="w-full max-w-sm shadow-xl"
+        style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '0.75rem' }}>
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #f1f5f9' }}>
+          <h2 className="font-semibold text-sm" style={{ color: '#1e293b' }}>Vorlage duplizieren</h2>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
+            style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Name der Kopie</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Mahlzeit-Typ</label>
+            <select value={mealType} onChange={e => setMealType(e.target.value)} style={selectStyle}>
+              {MEAL_TYPE_ORDER.map(t => <option key={t} value={t}>{MEAL_TYPE_LABELS[t]}</option>)}
+            </select>
+          </div>
+          <p className="text-xs" style={{ color: '#94a3b8' }}>
+            Alle {template.meal_template_items.length} Zutaten werden übernommen.
+          </p>
+        </div>
+        <div className="px-6 py-4 flex justify-end gap-2" style={{ borderTop: '1px solid #f1f5f9' }}>
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg"
+            style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>Abbrechen</button>
+          <button onClick={save} disabled={!name.trim() || saving}
+            className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-40"
+            style={{ background: '#475569' }}>{saving ? 'Duplizieren…' : 'Duplizieren'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface PlanTemplate {
   id: string; name: string; type: 'day' | 'week'; created_at: string
   plan_template_days: {
@@ -410,6 +486,7 @@ export default function VorlagenPage() {
   const [planTemplates, setPlanTemplates] = useState<PlanTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
+  const [duplicatingTemplate, setDuplicatingTemplate] = useState<Template | null>(null)
   const [creatingTemplate, setCreatingTemplate] = useState(false)
   const [activeTab, setActiveTab] = useState<'meal' | 'day' | 'week'>('meal')
 
@@ -521,6 +598,15 @@ export default function VorlagenPage() {
                           onMouseLeave={e => ((e.target as HTMLElement).style.color = '#475569')}
                         >
                           Bearbeiten
+                        </button>
+                        <button
+                          onClick={() => setDuplicatingTemplate(template)}
+                          className="text-xs transition-colors"
+                          style={{ color: '#0891b2' }}
+                          onMouseEnter={e => ((e.target as HTMLElement).style.color = '#0e7490')}
+                          onMouseLeave={e => ((e.target as HTMLElement).style.color = '#0891b2')}
+                        >
+                          Duplizieren
                         </button>
                         <button
                           onClick={() => remove(template.id)}
@@ -684,6 +770,14 @@ export default function VorlagenPage() {
           template={editingTemplate}
           onClose={() => setEditingTemplate(null)}
           onSaved={() => { setEditingTemplate(null); load() }}
+        />
+      )}
+
+      {duplicatingTemplate && (
+        <TemplateDuplicateModal
+          template={duplicatingTemplate}
+          onClose={() => setDuplicatingTemplate(null)}
+          onSaved={() => { setDuplicatingTemplate(null); load() }}
         />
       )}
 
