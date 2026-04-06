@@ -233,7 +233,7 @@ function TemplateEditModal({ template, onClose, onSaved }: {
 // ── Template Create Modal ─────────────────────────────────────
 function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState('')
-  const [mealType, setMealType] = useState('mittagessen')
+  const [mealType, setMealType] = useState('hauptmahlzeit')
   const [items, setItems] = useState<EditItem[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Food[]>([])
