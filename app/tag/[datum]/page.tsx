@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { sumItems } from '@/lib/calculations'
-import { loadSettings, goalColor } from '@/lib/settings'
+import { loadSettings, goalColor, limitColor } from '@/lib/settings'
 import { useSwipe } from '@/lib/useSwipe'
 import MealModal from '@/components/MealModal'
 
@@ -32,6 +32,12 @@ export default function TagPage() {
   const router = useRouter()
 
   const [view, setView]           = useState<'tag' | 'woche'>('tag')
+
+  // Persist view across week navigation via URL param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('view') === 'woche') setView('woche')
+  }, [])
   const [plan, setPlan]           = useState<Plan | null>(null)
   const [meals, setMeals]         = useState<Meal[]>([])
   const [weekPlans, setWeekPlans] = useState<WeekPlan[]>([])
@@ -163,7 +169,8 @@ export default function TagPage() {
   function navDay(offset: number) {
     const step = view === 'woche' ? offset * 7 : offset
     const d = new Date(datum + 'T12:00:00'); d.setDate(d.getDate() + step)
-    router.push(`/tag/${toDateStr(d)}`)
+    const viewParam = view === 'woche' ? '?view=woche' : ''
+    router.push(`/tag/${toDateStr(d)}${viewParam}`)
   }
 
   useSwipe({
@@ -289,7 +296,7 @@ export default function TagPage() {
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { label: 'Ø Kalorien/Tag', v: Math.round(avgKcal), unit: 'kcal', max: goals.kcal, color: goalColor(avgKcal, goals.kcal) },
+                    { label: 'Ø Kalorien/Tag', v: Math.round(avgKcal), unit: 'kcal', max: goals.kcal, color: limitColor(avgKcal, goals.kcal) },
                     { label: 'Protein gesamt', v: Math.round(wProtein * 10) / 10, unit: 'g', max: 0, color: '#475569' },
                     { label: 'Kosten gesamt', v: wCost.toFixed(2), unit: 'CHF', max: 0, color: '#475569', pre: true },
                   ].map(s => (
@@ -313,7 +320,7 @@ export default function TagPage() {
               const hasData = wp && wp.kcal_total > 0
               const isActive = ds === datum, isToday = ds === todayStr
               const pct = hasData ? Math.min((wp.kcal_total / goals.kcal) * 100, 100) : 0
-              const barColor = hasData ? goalColor(wp.kcal_total, goals.kcal) : '#e2e8f0'
+              const barColor = hasData ? limitColor(wp.kcal_total, goals.kcal) : '#e2e8f0'
               return (
                 <button key={i} onClick={() => { router.push(`/tag/${ds}`); setView('tag') }}
                   className="w-full rounded-xl transition-all text-left overflow-hidden"
@@ -335,7 +342,7 @@ export default function TagPage() {
                     {hasData ? (
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-sm font-bold" style={{ color: goalColor(wp.kcal_total, goals.kcal) }}>
+                          <span className="text-sm font-bold" style={{ color: limitColor(wp.kcal_total, goals.kcal) }}>
                             {Math.round(wp.kcal_total)} kcal
                           </span>
                           <div className="flex gap-3 text-xs" style={{ color: '#64748b' }}>

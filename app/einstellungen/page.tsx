@@ -49,11 +49,17 @@ export default function EinstellungenPage() {
   const [newMealType, setNewMealType] = useState('fruehstueck')
   const [newTemplateId, setNewTemplateId] = useState('')
 
+  // Categories
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [newCatName, setNewCatName] = useState('')
+  const [savingCat, setSavingCat] = useState(false)
+
   useEffect(() => {
     loadSettings().then(data => { setValues(data); setLoading(false) })
     loadRules()
     supabase.from('meal_templates').select('id, name, meal_type').order('name')
       .then(({ data }) => setTemplates(data || []))
+    loadCategories()
   }, [])
 
   async function loadRules() {
@@ -79,6 +85,27 @@ export default function EinstellungenPage() {
   async function deleteRule(id: string) {
     await supabase.from('event_meal_rules').delete().eq('id', id)
     await loadRules()
+  }
+
+  async function loadCategories() {
+    const { data } = await supabase.from('food_categories').select('id, name').order('name')
+    setCategories(data || [])
+  }
+
+  async function addCategory() {
+    const trimmed = newCatName.trim()
+    if (!trimmed) return
+    setSavingCat(true)
+    await supabase.from('food_categories').insert({ name: trimmed })
+    setNewCatName('')
+    setSavingCat(false)
+    await loadCategories()
+  }
+
+  async function deleteCategory(id: string) {
+    if (!confirm('Kategorie wirklich löschen?')) return
+    await supabase.from('food_categories').delete().eq('id', id)
+    await loadCategories()
   }
 
   async function handleSave() {
@@ -271,6 +298,53 @@ export default function EinstellungenPage() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Categories */}
+      <div
+        className="rounded-2xl overflow-hidden mb-5"
+        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
+      >
+        <div
+          className="px-5 py-3.5"
+          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
+        >
+          <h2 className="text-sm font-semibold" style={{ color: '#1e293b' }}>Lebensmittel-Kategorien</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Z.B. Gemüse, Fleisch, Milchprodukte</p>
+        </div>
+        <div>
+          {categories.length === 0 && (
+            <p className="px-5 py-4 text-center text-xs" style={{ color: '#94a3b8' }}>Noch keine Kategorien angelegt.</p>
+          )}
+          {categories.map((cat, idx) => (
+            <div key={cat.id} className="px-5 py-3 flex items-center justify-between"
+              style={idx > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}>
+              <span className="text-sm font-medium" style={{ color: '#1e293b' }}>{cat.name}</span>
+              <button onClick={() => deleteCategory(cat.id)}
+                className="text-xs transition-all" style={{ color: '#94a3b8' }}
+                onMouseEnter={e => ((e.target as HTMLElement).style.color = '#dc2626')}
+                onMouseLeave={e => ((e.target as HTMLElement).style.color = '#94a3b8')}>
+                Entfernen
+              </button>
+            </div>
+          ))}
+          <div className="px-5 py-3 flex gap-2" style={{ borderTop: categories.length > 0 ? '1px solid #f1f5f9' : 'none' }}>
+            <input
+              type="text"
+              value={newCatName}
+              onChange={e => setNewCatName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addCategory()}
+              placeholder="Neue Kategorie…"
+              className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+              style={{ border: '1px solid #e2e8f0', color: '#1e293b' }}
+            />
+            <button onClick={addCategory} disabled={!newCatName.trim() || savingCat}
+              className="px-3 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
+              style={{ background: '#475569' }}>
+              +
+            </button>
+          </div>
         </div>
       </div>
 

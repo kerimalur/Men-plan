@@ -25,6 +25,15 @@ export function goalColor(value: number, max: number): string {
   return '#dc2626'
 }
 
+// For metrics where exceeding the limit is bad (kcal, kosten):
+// green = within budget, red = exceeded
+export function limitColor(value: number, max: number): string {
+  if (max <= 0) return '#475569'
+  const pct = value / max
+  if (pct > 1.0) return '#dc2626'
+  return '#16a34a'
+}
+
 export function goalTextClass(value: number, max: number): string {
   if (max <= 0) return 'text-slate-600'
   const pct = value / max

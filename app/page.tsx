@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { loadSettings, goalColor } from '@/lib/settings'
+import { loadSettings, goalColor, limitColor } from '@/lib/settings'
 import { useSwipe } from '@/lib/useSwipe'
 
 const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
@@ -26,11 +26,11 @@ function greeting() {
   return 'Guten Abend'
 }
 
-function ArcProgress({ value, max, size = 100 }: { value: number; max: number; size?: number }) {
+function ArcProgress({ value, max, size = 100, color: colorProp }: { value: number; max: number; size?: number; color?: string }) {
   const r = size * 0.37
   const circ = 2 * Math.PI * r
   const pct = max > 0 ? Math.min(value / max, 1) : 0
-  const color = goalColor(value, max)
+  const color = colorProp ?? goalColor(value, max)
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth="8" />
@@ -107,17 +107,17 @@ export default function Dashboard() {
       {/* Stats cards */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         {[
-          { label: 'Kalorien', value: Math.round(kcal),    max: goals.kcal,    display: `${Math.round(kcal)}`, unit: 'kcal' },
-          { label: 'Protein',  value: protein,             max: goals.protein, display: `${Math.round(protein * 10) / 10}`, unit: 'g' },
-          { label: 'Kosten',   value: cost,                max: goals.kosten,  display: cost.toFixed(2), unit: 'CHF', prefix: true },
+          { label: 'Kalorien', value: Math.round(kcal),    max: goals.kcal,    display: `${Math.round(kcal)}`, unit: 'kcal', limit: true },
+          { label: 'Protein',  value: protein,             max: goals.protein, display: `${Math.round(protein * 10) / 10}`, unit: 'g', limit: false },
+          { label: 'Kosten',   value: cost,                max: goals.kosten,  display: cost.toFixed(2), unit: 'CHF', prefix: true, limit: true },
         ].map(s => {
           const pct = s.max > 0 ? Math.round((s.value / s.max) * 100) : 0
-          const color = goalColor(s.value, s.max)
+          const color = s.limit ? limitColor(s.value, s.max) : goalColor(s.value, s.max)
           return (
             <div key={s.label} className="rounded-2xl p-4 flex flex-col items-center"
               style={{ background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
               <div className="relative mb-2">
-                <ArcProgress value={s.value} max={s.max} size={80} />
+                <ArcProgress value={s.value} max={s.max} size={80} color={color} />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-xs font-bold" style={{ color: '#475569' }}>{pct}%</span>
                 </div>

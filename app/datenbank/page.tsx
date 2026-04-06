@@ -10,6 +10,12 @@ interface Food {
   protein_per_100: number
   cost_per_100: number
   unit: 'g' | 'ml' | 'stk'
+  category_id: string | null
+}
+
+interface Category {
+  id: string
+  name: string
 }
 
 interface FoodForm {
@@ -54,7 +60,10 @@ function parseImportText(text: string): ImportRow[] {
 
 export default function DatenbankPage() {
   const [foods, setFoods] = useState<Food[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [search, setSearch] = useState('')
+  const [activeCat, setActiveCat] = useState<string | null>(null) // null = all
+  const [dragOverCat, setDragOverCat] = useState<string | 'none' | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Food | null>(null)
   const [form, setForm] = useState<FoodForm>(emptyForm)
@@ -65,13 +74,29 @@ export default function DatenbankPage() {
   const [importText, setImportText] = useState('')
   const [importing, setImporting] = useState(false)
 
-  useEffect(() => { loadFoods() }, [search])
+  useEffect(() => { loadFoods() }, [search, activeCat])
+  useEffect(() => { loadCategories() }, [])
 
   async function loadFoods() {
     let q = supabase.from('foods').select('*').order('name')
     if (search.trim()) q = q.ilike('name', `%${search.trim()}%`)
+    if (activeCat === 'none') {
+      q = q.is('category_id', null)
+    } else if (activeCat) {
+      q = q.eq('category_id', activeCat)
+    }
     const { data } = await q
     setFoods(data || [])
+  }
+
+  async function loadCategories() {
+    const { data } = await supabase.from('food_categories').select('id, name').order('name')
+    setCategories(data || [])
+  }
+
+  async function assignCategory(foodId: string, categoryId: string | null) {
+    await supabase.from('foods').update({ category_id: categoryId }).eq('id', foodId)
+    await loadFoods()
   }
 
   function openAdd() {
@@ -190,11 +215,70 @@ export default function DatenbankPage() {
         value={search}
         onChange={e => setSearch(e.target.value)}
         placeholder="Suchen…"
-        style={{
-          ...inputStyle,
-          marginBottom: '1rem',
-        }}
+        style={{ ...inputStyle, marginBottom: '0.75rem' }}
       />
+
+      {/* Category filter pills (also drag-drop zones) */}
+      {categories.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {/* All */}
+          <button
+            onClick={() => setActiveCat(null)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+            style={activeCat === null ? { background: '#475569', color: 'white' } : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}
+          >Alle</button>
+
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCat(activeCat === cat.id ? null : cat.id)}
+              onDragOver={e => { e.preventDefault(); setDragOverCat(cat.id) }}
+              onDragLeave={() => setDragOverCat(null)}
+              onDrop={e => {
+                e.preventDefault()
+                const foodId = e.dataTransfer.getData('text/plain')
+                if (foodId) assignCategory(foodId, cat.id)
+                setDragOverCat(null)
+              }}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+              style={
+                dragOverCat === cat.id
+                  ? { background: '#475569', color: 'white', transform: 'scale(1.05)' }
+                  : activeCat === cat.id
+                    ? { background: '#475569', color: 'white' }
+                    : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }
+              }
+            >{cat.name}</button>
+          ))}
+
+          {/* Unkategorisiert drop zone */}
+          <button
+            onClick={() => setActiveCat(activeCat === 'none' ? null : 'none')}
+            onDragOver={e => { e.preventDefault(); setDragOverCat('none') }}
+            onDragLeave={() => setDragOverCat(null)}
+            onDrop={e => {
+              e.preventDefault()
+              const foodId = e.dataTransfer.getData('text/plain')
+              if (foodId) assignCategory(foodId, null)
+              setDragOverCat(null)
+            }}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+            style={
+              dragOverCat === 'none'
+                ? { background: '#94a3b8', color: 'white', transform: 'scale(1.05)' }
+                : activeCat === 'none'
+                  ? { background: '#94a3b8', color: 'white' }
+                  : { background: '#f8fafc', color: '#94a3b8', border: '1px dashed #e2e8f0' }
+            }
+          >Unkategorisiert</button>
+        </div>
+      )}
+
+      {categories.length > 0 && (
+        <p className="text-xs mb-3" style={{ color: '#94a3b8' }}>
+          Tipp: Zeilen ziehen und auf eine Kategorie fallen lassen, um sie zuzuordnen.
+        </p>
+      )}
 
       {/* Table */}
       <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '1rem', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
@@ -206,13 +290,14 @@ export default function DatenbankPage() {
               <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>Protein</th>
               <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>CHF</th>
               <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>je</th>
+              {categories.length > 0 && <th className="text-left px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>Kategorie</th>}
               <th className="px-4 py-3 w-28"></th>
             </tr>
           </thead>
           <tbody>
             {foods.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-sm" style={{ color: '#94a3b8' }}>
+                <td colSpan={categories.length > 0 ? 7 : 6} className="px-5 py-10 text-center text-sm" style={{ color: '#94a3b8' }}>
                   {search ? 'Keine Ergebnisse.' : 'Noch keine Lebensmittel eingetragen.'}
                 </td>
               </tr>
@@ -220,7 +305,9 @@ export default function DatenbankPage() {
             {foods.map(food => (
               <tr
                 key={food.id}
-                style={{ borderTop: '1px solid #f1f5f9' }}
+                draggable={categories.length > 0}
+                onDragStart={e => { e.dataTransfer.setData('text/plain', food.id); e.dataTransfer.effectAllowed = 'move' }}
+                style={{ borderTop: '1px solid #f1f5f9', cursor: categories.length > 0 ? 'grab' : 'default' }}
                 className="transition-colors"
                 onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -230,6 +317,20 @@ export default function DatenbankPage() {
                 <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{food.protein_per_100}g</td>
                 <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{Number(food.cost_per_100).toFixed(2)}</td>
                 <td className="px-4 py-3 text-right text-xs" style={{ color: '#94a3b8' }}>{food.unit === 'stk' ? '1 Stk.' : `100${food.unit}`}</td>
+                {categories.length > 0 && (
+                  <td className="px-4 py-3">
+                    <select
+                      value={food.category_id || ''}
+                      onChange={e => assignCategory(food.id, e.target.value || null)}
+                      onClick={e => e.stopPropagation()}
+                      className="text-xs rounded-lg px-2 py-1 outline-none"
+                      style={{ border: '1px solid #e2e8f0', color: food.category_id ? '#475569' : '#94a3b8', background: 'white', maxWidth: '8rem' }}
+                    >
+                      <option value="">—</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </td>
+                )}
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => openEdit(food)} className="text-xs mr-3 transition-colors" style={{ color: '#475569' }}
                     onMouseEnter={e => ((e.target as HTMLElement).style.color = '#1e293b')}

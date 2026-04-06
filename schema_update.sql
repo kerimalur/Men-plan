@@ -3,6 +3,24 @@
 -- ============================================================
 
 -- ============================================================
+-- Lebensmittel-Kategorien
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS food_categories (
+  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name       TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add category reference to foods
+ALTER TABLE foods ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES food_categories(id) ON DELETE SET NULL;
+
+-- RLS
+ALTER TABLE food_categories ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow_all" ON food_categories;
+CREATE POLICY "allow_all" ON food_categories FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- ============================================================
 -- Hauptmahlzeit: Mittagessen + Abendessen in meal_templates zusammenführen
 -- ============================================================
 
