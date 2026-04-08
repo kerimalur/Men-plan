@@ -3,20 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { calcNutrition, sumItems } from '@/lib/calculations'
-
-const MEAL_TYPE_LABELS: Record<string, string> = {
-  fruehstueck:   'Frühstück',
-  hauptmahlzeit: 'Hauptmahlzeit',
-  snack:         'Snack',
-  // legacy values (displayed grouped under Hauptmahlzeit)
-  mittagessen:   'Hauptmahlzeit',
-  abendessen:    'Hauptmahlzeit',
-}
-const MEAL_TYPE_ORDER = ['fruehstueck', 'hauptmahlzeit', 'snack']
-
-interface Food {
-  id: string; name: string; calories_per_100: number; protein_per_100: number; cost_per_100: number; unit: 'g' | 'ml' | 'stk'
-}
+import { MEAL_TYPE_LABELS, MEAL_TYPE_ORDER } from '@/lib/mealTypes'
+import FoodSearch from '@/components/FoodSearch'
+import type { Food } from '@/components/FoodSearch'
 
 interface TemplateItem {
   id: string

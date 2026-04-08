@@ -6,18 +6,9 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { loadSettings, goalColor, limitColor } from '@/lib/settings'
 import { useSwipe } from '@/lib/useSwipe'
-
-const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
-const DAY_NAMES = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
-
-const MEAL_ORDER = ['fruehstueck', 'mittagessen', 'abendessen', 'snack']
-const MEAL_META: Record<string, { label: string; color: string }> = {
-  fruehstueck: { label: 'Frühstück',   color: '#d97706' },
-  mittagessen: { label: 'Mittagessen', color: '#059669' },
-  abendessen:  { label: 'Abendessen',  color: '#4f46e5' },
-  snack:       { label: 'Snack',       color: '#7c3aed' },
-}
+import { MONTH_NAMES, DAY_NAMES } from '@/lib/dates'
+import { MEAL_TYPE_ORDER, MEAL_TYPE_COLORS, MEAL_TYPE_LABELS } from '@/lib/mealTypes'
+import { useToast } from '@/components/Toast'
 
 function greeting() {
   const h = new Date().getHours()
@@ -53,6 +44,7 @@ export default function Dashboard() {
   const todayStr = today.toISOString().split('T')[0]
   const todayLabel = `${DAY_NAMES[today.getDay()]}, ${today.getDate()}. ${MONTH_NAMES[today.getMonth()]} ${today.getFullYear()}`
   const router = useRouter()
+  const { toast } = useToast()
 
   const [plan, setPlan]     = useState<Plan | null>(null)
   const [meals, setMeals]   = useState<Meal[]>([])
@@ -66,17 +58,24 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function load() {
-      const [planRes, settingsData, markerRes] = await Promise.all([
-        supabase.from('meal_plans').select('*').eq('date', todayStr).maybeSingle(),
-        loadSettings(),
-        supabase.from('day_markers').select('training,eingeladen').eq('date', todayStr).maybeSingle(),
-      ])
-      setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150, kosten: parseInt(settingsData.kosten_ziel) || 20 })
-      setMarker(markerRes.data)
-      if (planRes.data) {
-        setPlan(planRes.data)
-        const { data } = await supabase.from('meals').select('*').eq('plan_id', planRes.data.id)
-        setMeals(data || [])
+      try {
+        const [planRes, settingsData, markerRes] = await Promise.all([
+          supabase.from('meal_plans').select('*').eq('date', todayStr).maybeSingle(),
+          loadSettings(),
+          supabase.from('day_markers').select('training,eingeladen').eq('date', todayStr).maybeSingle(),
+        ])
+        if (planRes.error) throw planRes.error
+        if (markerRes.error) throw markerRes.error
+        setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150, kosten: parseInt(settingsData.kosten_ziel) || 20 })
+        setMarker(markerRes.data)
+        if (planRes.data) {
+          setPlan(planRes.data)
+          const { data, error } = await supabase.from('meals').select('*').eq('plan_id', planRes.data.id)
+          if (error) throw error
+          setMeals(data || [])
+        }
+      } catch {
+        toast('Fehler beim Laden der Dashboard-Daten', 'error')
       }
     }
     load()
@@ -155,21 +154,22 @@ export default function Dashboard() {
             </Link>
           </div>
         ) : (
-          MEAL_ORDER.map((type, i) => {
+          MEAL_TYPE_ORDER.map((type, i) => {
             const meal = meals.find(m => m.meal_type === type)
-            const meta = MEAL_META[type]
+            const label = MEAL_TYPE_LABELS[type]
+            const color = MEAL_TYPE_COLORS[type]
             return (
               <div key={type} className="flex items-center gap-4 px-5 py-3.5"
-                style={{ borderBottom: i < 3 ? '1px solid #f8fafc' : 'none' }}>
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: meta.color }} />
+                style={{ borderBottom: i < MEAL_TYPE_ORDER.length - 1 ? '1px solid #f8fafc' : 'none' }}>
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
                 <span className="text-xs font-bold w-22 shrink-0" style={{ color: '#94a3b8', minWidth: '5rem' }}>
-                  {meta.label}
+                  {label}
                 </span>
                 {meal ? (
                   <>
                     <span className="text-sm flex-1 truncate font-medium" style={{ color: '#1e293b' }}>{meal.name}</span>
                     <div className="flex gap-3 shrink-0">
-                      <span className="text-xs font-semibold" style={{ color: goalColor(meal.kcal_total, 0) }}>
+                      <span className="text-xs font-semibold" style={{ color: limitColor(meal.kcal_total, goals.kcal) }}>
                         {Math.round(meal.kcal_total)} kcal
                       </span>
                       <span className="text-xs" style={{ color: '#94a3b8' }}>{meal.protein_total}g P</span>

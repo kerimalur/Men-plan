@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { calcNutrition, sumItems } from '@/lib/calculations'
 import { useSwipe } from '@/lib/useSwipe'
 import { useRouter } from 'next/navigation'
+import { MEAL_TYPE_LABELS, MEAL_TYPE_COLORS } from '@/lib/mealTypes'
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -32,20 +33,6 @@ interface Note {
   created_at: string
   updated_at: string
   note_items: NoteItem[]
-}
-
-const MEAL_TYPES: Record<string, string> = {
-  fruehstueck: 'Frühstück',
-  mittagessen: 'Mittagessen',
-  abendessen:  'Abendessen',
-  snack:       'Snack',
-}
-
-const MEAL_TYPE_COLORS: Record<string, string> = {
-  fruehstueck: '#d97706',
-  mittagessen: '#059669',
-  abendessen:  '#4f46e5',
-  snack:       '#7c3aed',
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -225,7 +212,7 @@ function NoteCard({ note, onClick, onDelete }: { note: Note; onClick: () => void
         {note.meal_type && (
           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
             style={{ background: MEAL_TYPE_COLORS[note.meal_type] + '18', color: MEAL_TYPE_COLORS[note.meal_type] }}>
-            {MEAL_TYPES[note.meal_type]}
+            {MEAL_TYPE_LABELS[note.meal_type]}
           </span>
         )}
         {totalItems > 0 && (
@@ -762,7 +749,7 @@ function NoteDetail({ note, onBack, onDelete, onUpdated }: {
 
       {/* Meal Type Selector */}
       <div className="flex gap-2 mb-3 flex-wrap">
-        {Object.entries(MEAL_TYPES).map(([key, label]) => (
+        {Object.entries(MEAL_TYPE_LABELS).filter(([k]) => ['fruehstueck', 'hauptmahlzeit', 'snack'].includes(k)).map(([key, label]) => (
           <button
             key={key}
             onClick={() => { setMealType(mealType === key ? '' : key); setDirty(true) }}
