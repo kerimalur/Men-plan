@@ -16,7 +16,7 @@ const DAY_LONG  = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'S
 
 interface Plan   { date: string; kcal_total: number; protein_total: number; cost_total: number; meals?: { meal_type: string }[] }
 interface Marker { date: string; training: boolean; eingeladen: boolean }
-interface Goals  { kcal: number; protein: number }
+interface Goals  { kcal: number; protein: number; kosten: number }
 
 const REQUIRED_MEALS = ['fruehstueck', 'mittagessen', 'abendessen', 'snack']
 function isDayComplete(plan?: Plan) {
@@ -56,10 +56,7 @@ function buildExportHtml(
 
   function kcalColor(v: number) {
     if (!v) return '#94a3b8'
-    const pct = v / goals.kcal
-    if (pct >= 0.95) return '#16a34a'
-    if (pct >= 0.6)  return '#d97706'
-    return '#dc2626'
+    return v > goals.kcal ? '#dc2626' : '#16a34a'
   }
 
   const rowsHtml = rows.map(({ label, plan, marker }) => {
@@ -235,7 +232,7 @@ function DayPopup({ dateStr, plan, marker, goals, isComplete, onClose, onMarkerC
               {[
                 { label: 'Kalorien', v: Math.round(plan.kcal_total),         max: goals.kcal,    u: 'kcal', limit: true },
                 { label: 'Protein',  v: Math.round(plan.protein_total * 10) / 10, max: goals.protein, u: 'g', limit: false },
-                { label: 'Kosten',   v: Number(plan.cost_total).toFixed(2),   max: 0,             u: 'CHF', pre: true, limit: true },
+                { label: 'Kosten',   v: Number(plan.cost_total).toFixed(2),   max: goals.kosten,  u: 'CHF', pre: true, limit: true },
               ].map(s => (
                 <div key={s.label}>
                   <div className="flex justify-between text-xs mb-1.5">
@@ -783,7 +780,7 @@ export default function KalenderPage() {
   const [anchor, setAnchor]   = useState(new Date())
   const [plans, setPlans]     = useState<Plan[]>([])
   const [markers, setMarkers] = useState<Marker[]>([])
-  const [goals, setGoals]     = useState<Goals>({ kcal: 2000, protein: 150 })
+  const [goals, setGoals]     = useState<Goals>({ kcal: 2000, protein: 150, kosten: 20 })
   const [popup, setPopup]     = useState<string | null>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [templateAction, setTemplateAction] = useState<{ type: 'save' | 'load' | 'copy'; dateStr: string } | null>(null)
@@ -812,7 +809,7 @@ export default function KalenderPage() {
     ])
     setPlans(planRes.data || [])
     setMarkers(markerRes.data || [])
-    setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150 })
+    setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150, kosten: parseInt(settingsData.kosten_ziel) || 20 })
   }
 
   const monday    = getMondayOfWeek(today)
@@ -948,7 +945,7 @@ export default function KalenderPage() {
                 {/* Stats */}
                 {plan && plan.kcal_total > 0 && (
                   <div>
-                    <div className="text-[10px] font-bold leading-tight" style={{ color: goalColor(plan.kcal_total, goals.kcal) }}>
+                    <div className="text-[10px] font-bold leading-tight" style={{ color: limitColor(plan.kcal_total, goals.kcal) }}>
                       {Math.round(plan.kcal_total)}
                     </div>
                     <div className="text-[9px] leading-tight" style={{ color: '#94a3b8' }}>kcal</div>

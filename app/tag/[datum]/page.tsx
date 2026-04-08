@@ -43,7 +43,7 @@ export default function TagPage() {
   const [weekPlans, setWeekPlans] = useState<WeekPlan[]>([])
   const [loading, setLoading]     = useState(true)
   const [addingFor, setAddingFor] = useState<string | null>(null)
-  const [goals, setGoals]         = useState({ kcal: 2000, protein: 150 })
+  const [goals, setGoals]         = useState({ kcal: 2000, protein: 150, kosten: 20 })
   const [editingItemId, setEditingItemId]       = useState<string | null>(null)
   const [editingItemAmount, setEditingItemAmount] = useState('')
   const [savingTemplate, setSavingTemplate] = useState<'day' | 'week' | null>(null)
@@ -66,7 +66,7 @@ export default function TagPage() {
       supabase.from('meal_plans').select('*').eq('date', datum).maybeSingle(),
       loadSettings(),
     ])
-    setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150 })
+    setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150, kosten: parseInt(settingsData.kosten_ziel) || 20 })
     if (planRes.data) {
       setPlan(planRes.data)
       const { data } = await supabase.from('meals').select('*, meal_items(*)').eq('plan_id', planRes.data.id).order('created_at')
@@ -399,12 +399,14 @@ export default function TagPage() {
             <div className="rounded-2xl p-5 mb-5" style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { label: 'Kalorien', v: Math.round(totals.kcal),               max: goals.kcal,    display: `${Math.round(totals.kcal)}`, unit: 'kcal' },
-                  { label: 'Protein',  v: totals.protein,                         max: goals.protein, display: `${Math.round(totals.protein * 10) / 10}`, unit: 'g' },
-                  { label: 'Kosten',   v: totals.cost,                            max: 0,             display: totals.cost.toFixed(2), unit: 'CHF', pre: true },
-                ].map(s => (
+                  { label: 'Kalorien', v: Math.round(totals.kcal),               max: goals.kcal,    display: `${Math.round(totals.kcal)}`, unit: 'kcal', limit: true },
+                  { label: 'Protein',  v: totals.protein,                         max: goals.protein, display: `${Math.round(totals.protein * 10) / 10}`, unit: 'g', limit: false },
+                  { label: 'Kosten',   v: totals.cost,                            max: goals.kosten,  display: totals.cost.toFixed(2), unit: 'CHF', pre: true, limit: true },
+                ].map(s => {
+                  const color = s.limit ? limitColor(s.v, s.max) : goalColor(s.v, s.max)
+                  return (
                   <div key={s.label} className="text-center">
-                    <p className="text-2xl font-black" style={{ color: goalColor(s.v, s.max) }}>
+                    <p className="text-2xl font-black" style={{ color }}>
                       {s.pre ? `${s.display}` : s.display}
                       <span className="text-sm font-normal ml-0.5" style={{ color: '#94a3b8' }}>
                         {s.unit}
@@ -412,12 +414,12 @@ export default function TagPage() {
                     </p>
                     <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>{s.label}</p>
                     {s.max > 0 && (
-                      <p className="text-xs mt-0.5 font-semibold" style={{ color: goalColor(s.v, s.max) }}>
+                      <p className="text-xs mt-0.5 font-semibold" style={{ color }}>
                         {Math.round((s.v / s.max) * 100)}%
                       </p>
                     )}
                   </div>
-                ))}
+                )})}
               </div>
             </div>
           )}
