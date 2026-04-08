@@ -22,11 +22,8 @@ UPDATE notes SET meal_type = 'hauptmahlzeit' WHERE meal_type IN ('mittagessen', 
 ALTER TABLE notes ADD CONSTRAINT notes_meal_type_check
   CHECK (meal_type IN ('fruehstueck', 'hauptmahlzeit', 'snack'));
 
--- 4. meals.meal_type (live data): Migriere bestehende Daten
--- HINWEIS: Bestehende Mahlzeiten bleiben erhalten, nur der Typ wird aktualisiert
+-- 4. meals.meal_type: Constraint entfernen, Daten migrieren, neuen Constraint setzen
+ALTER TABLE meals DROP CONSTRAINT IF EXISTS meals_meal_type_check;
 UPDATE meals SET meal_type = 'hauptmahlzeit' WHERE meal_type IN ('mittagessen', 'abendessen');
-
--- Optional: Constraint auf meals Tabelle (falls gewünscht)
--- ALTER TABLE meals DROP CONSTRAINT IF EXISTS meals_meal_type_check;
--- ALTER TABLE meals ADD CONSTRAINT meals_meal_type_check
---   CHECK (meal_type IN ('fruehstueck', 'hauptmahlzeit', 'snack'));
+ALTER TABLE meals ADD CONSTRAINT meals_meal_type_check
+  CHECK (meal_type IN ('fruehstueck', 'hauptmahlzeit', 'snack'));
