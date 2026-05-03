@@ -26,17 +26,6 @@ function toBaseAmount(amount: number, unit: string): number {
   }
 }
 
-<<<<<<< HEAD
-function getMondayOfWeek(d: Date) {
-  const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  const m = new Date(d); m.setDate(d.getDate() + diff); return m
-}
-
-function toDateStr(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
-
-=======
->>>>>>> ab9318841c60072b04a2bd0468a6741c37c57ce4
 function formatAmount(amount: number, baseUnit: string): string {
   if (baseUnit === 'stk') {
     return `${amount % 1 === 0 ? amount : amount.toFixed(1)} Stk.`

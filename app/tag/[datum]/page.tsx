@@ -11,23 +11,6 @@ import { MEAL_TYPE_ORDER, MEAL_TYPE_META } from '@/lib/mealTypes'
 import { useToast } from '@/components/Toast'
 import MealModal from '@/components/MealModal'
 
-<<<<<<< HEAD
-const MEAL_TYPES = [
-  { key: 'fruehstueck', label: 'Frühstück',   color: '#78716c', bg: '#fafaf9', border: '#e7e5e4' },
-  { key: 'mittagessen', label: 'Mittagessen',  color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
-  { key: 'abendessen',  label: 'Abendessen',   color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
-  { key: 'snack',       label: 'Snack',        color: '#71717a', bg: '#fafafa', border: '#e4e4e7' },
-]
-
-const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
-const DAY_LONG  = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
-const DAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
-
-function toDateStr(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
-
-=======
->>>>>>> ab9318841c60072b04a2bd0468a6741c37c57ce4
 interface MealItem { id: string; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }
 interface Meal     { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number; meal_items: MealItem[] }
 interface Plan     { id: string; kcal_total: number; protein_total: number; cost_total: number }

@@ -20,17 +20,7 @@ interface Goals  { kcal: number; protein: number; kosten: number }
 function isDayComplete(plan?: Plan) {
   if (!plan?.meals) return false
   const types = new Set(plan.meals.map(m => m.meal_type))
-<<<<<<< HEAD
-  return REQUIRED_MEALS.every(t => types.has(t))
-}
-
-function toDateStr(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
-function getMondayOfWeek(d: Date) {
-  const day = d.getDay(), diff = day === 0 ? -6 : 1 - day
-  const m = new Date(d); m.setDate(d.getDate() + diff); return m
-=======
   return MEAL_TYPE_ORDER.every(t => types.has(t))
->>>>>>> ab9318841c60072b04a2bd0468a6741c37c57ce4
 }
 
 function tileStyle(plan: Plan | undefined, goals: Goals, isToday: boolean, isPast: boolean): React.CSSProperties {
