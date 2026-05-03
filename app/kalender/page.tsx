@@ -25,7 +25,7 @@ function isDayComplete(plan?: Plan) {
   return REQUIRED_MEALS.every(t => types.has(t))
 }
 
-function toDateStr(d: Date) { return d.toISOString().split('T')[0] }
+function toDateStr(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 function getMondayOfWeek(d: Date) {
   const day = d.getDay(), diff = day === 0 ? -6 : 1 - day
   const m = new Date(d); m.setDate(d.getDate() + diff); return m
