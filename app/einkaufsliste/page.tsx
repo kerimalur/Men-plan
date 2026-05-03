@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSwipe } from '@/lib/useSwipe'
 import { useRouter } from 'next/navigation'
+import { getMondayOfWeek, toDateStr } from '@/lib/dates'
 
 interface ShoppingItem { id: string; item: string; quantity: string | null; checked: boolean }
 
@@ -25,6 +26,7 @@ function toBaseAmount(amount: number, unit: string): number {
   }
 }
 
+<<<<<<< HEAD
 function getMondayOfWeek(d: Date) {
   const day = d.getDay()
   const diff = day === 0 ? -6 : 1 - day
@@ -33,6 +35,8 @@ function getMondayOfWeek(d: Date) {
 
 function toDateStr(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 
+=======
+>>>>>>> ab9318841c60072b04a2bd0468a6741c37c57ce4
 function formatAmount(amount: number, baseUnit: string): string {
   if (baseUnit === 'stk') {
     return `${amount % 1 === 0 ? amount : amount.toFixed(1)} Stk.`
@@ -215,6 +219,15 @@ export default function EinkaufslistePage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Einkaufsliste</h1>
         <div className="flex items-center gap-2">
+          {items.length > 0 && (
+            <button
+              onClick={async () => { if (confirm('Gesamte Einkaufsliste löschen?')) { await supabase.from('shopping_list').delete().neq('id', ''); await load() } }}
+              className="text-xs transition-colors"
+              style={{ color: '#dc2626' }}
+            >
+              Alle löschen
+            </button>
+          )}
           {checked.length > 0 && (
             <button
               onClick={clearChecked}

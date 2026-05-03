@@ -6,8 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { sumItems } from '@/lib/calculations'
 import { loadSettings, goalColor, limitColor } from '@/lib/settings'
 import { useSwipe } from '@/lib/useSwipe'
+import { MONTH_NAMES, DAY_NAMES, DAY_LONG, toDateStr, getWeekDays } from '@/lib/dates'
+import { MEAL_TYPE_ORDER, MEAL_TYPE_META } from '@/lib/mealTypes'
+import { useToast } from '@/components/Toast'
 import MealModal from '@/components/MealModal'
 
+<<<<<<< HEAD
 const MEAL_TYPES = [
   { key: 'fruehstueck', label: 'Frühstück',   color: '#78716c', bg: '#fafaf9', border: '#e7e5e4' },
   { key: 'mittagessen', label: 'Mittagessen',  color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
@@ -22,6 +26,8 @@ const DAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 
 function toDateStr(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 
+=======
+>>>>>>> ab9318841c60072b04a2bd0468a6741c37c57ce4
 interface MealItem { id: string; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }
 interface Meal     { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number; meal_items: MealItem[] }
 interface Plan     { id: string; kcal_total: number; protein_total: number; cost_total: number }
@@ -30,6 +36,7 @@ interface WeekPlan { date: string; kcal_total: number; protein_total: number; co
 export default function TagPage() {
   const { datum } = useParams<{ datum: string }>()
   const router = useRouter()
+  const { toast } = useToast()
 
   const [view, setView]           = useState<'tag' | 'woche'>('tag')
 
@@ -43,7 +50,7 @@ export default function TagPage() {
   const [weekPlans, setWeekPlans] = useState<WeekPlan[]>([])
   const [loading, setLoading]     = useState(true)
   const [addingFor, setAddingFor] = useState<string | null>(null)
-  const [goals, setGoals]         = useState({ kcal: 2000, protein: 150 })
+  const [goals, setGoals]         = useState({ kcal: 2000, protein: 150, kosten: 20 })
   const [editingItemId, setEditingItemId]       = useState<string | null>(null)
   const [editingItemAmount, setEditingItemAmount] = useState('')
   const [savingTemplate, setSavingTemplate] = useState<'day' | 'week' | null>(null)
@@ -52,28 +59,30 @@ export default function TagPage() {
 
   const dateObj       = new Date(datum + 'T12:00:00')
   const todayStr      = toDateStr(new Date())
-  const formattedDate = `${DAY_LONG[dateObj.getDay()]}, ${dateObj.getDate()}. ${MONTH_NAMES[dateObj.getMonth()]} ${dateObj.getFullYear()}`
+  const formattedDate = `${DAY_NAMES[dateObj.getDay()]}, ${dateObj.getDate()}. ${MONTH_NAMES[dateObj.getMonth()]} ${dateObj.getFullYear()}`
 
-  function getWeekDays(d: Date) {
-    const day = d.getDay(), diff = day === 0 ? -6 : 1 - day
-    return Array.from({ length: 7 }, (_, i) => { const wd = new Date(d); wd.setDate(d.getDate() + diff + i); return wd })
-  }
   const weekDays = getWeekDays(dateObj)
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [planRes, settingsData] = await Promise.all([
-      supabase.from('meal_plans').select('*').eq('date', datum).maybeSingle(),
-      loadSettings(),
-    ])
-    setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150 })
-    if (planRes.data) {
-      setPlan(planRes.data)
-      const { data } = await supabase.from('meals').select('*, meal_items(*)').eq('plan_id', planRes.data.id).order('created_at')
-      setMeals((data as Meal[]) || [])
-    } else { setPlan(null); setMeals([]) }
+    try {
+      const [planRes, settingsData] = await Promise.all([
+        supabase.from('meal_plans').select('*').eq('date', datum).maybeSingle(),
+        loadSettings(),
+      ])
+      if (planRes.error) throw planRes.error
+      setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150, kosten: parseInt(settingsData.kosten_ziel) || 20 })
+      if (planRes.data) {
+        setPlan(planRes.data)
+        const { data, error } = await supabase.from('meals').select('*, meal_items(*)').eq('plan_id', planRes.data.id).order('created_at')
+        if (error) throw error
+        setMeals((data as Meal[]) || [])
+      } else { setPlan(null); setMeals([]) }
+    } catch {
+      toast('Fehler beim Laden der Tagesdaten', 'error')
+    }
     setLoading(false)
-  }, [datum])
+  }, [datum, toast])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -120,6 +129,25 @@ export default function TagPage() {
     const rem = meals.filter(m => m.id !== id)
     if (plan) await recalc(plan.id, rem)
     await loadData()
+  }
+
+  async function duplicateMeal(meal: Meal) {
+    if (!plan) return
+    const { data: newMeal } = await supabase.from('meals').insert({
+      plan_id: plan.id, meal_type: meal.meal_type, name: meal.name,
+      kcal_total: meal.kcal_total, protein_total: meal.protein_total, cost_total: meal.cost_total,
+    }).select().single()
+    if (newMeal && meal.meal_items?.length) {
+      await supabase.from('meal_items').insert(
+        meal.meal_items.map(i => ({
+          meal_id: newMeal.id, food_id: null, food_name: i.food_name,
+          amount: i.amount, unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost,
+        }))
+      )
+    }
+    await recalc(plan.id, [...meals, { kcal_total: meal.kcal_total, protein_total: meal.protein_total, cost_total: meal.cost_total } as Meal])
+    await loadData()
+    toast(`"${meal.name}" dupliziert`, 'success')
   }
 
   async function deleteItem(meal: Meal, itemId: string) {
@@ -182,9 +210,8 @@ export default function TagPage() {
 
   const totals = sumItems(meals.map(m => ({ kcal: m.kcal_total, protein: m.protein_total, cost: m.cost_total })))
 
-  const REQUIRED_MEALS = ['fruehstueck', 'mittagessen', 'abendessen', 'snack']
   const mealTypesPresent = new Set(meals.map(m => m.meal_type))
-  const isDayComplete = REQUIRED_MEALS.every(t => mealTypesPresent.has(t))
+  const isDayComplete = MEAL_TYPE_ORDER.every(t => mealTypesPresent.has(t))
 
   async function saveDayAsTemplate(name: string) {
     if (!name.trim() || !plan) return
@@ -296,9 +323,9 @@ export default function TagPage() {
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { label: 'Ø Kalorien/Tag', v: Math.round(avgKcal), unit: 'kcal', max: goals.kcal, color: limitColor(avgKcal, goals.kcal) },
-                    { label: 'Protein gesamt', v: Math.round(wProtein * 10) / 10, unit: 'g', max: 0, color: '#475569' },
-                    { label: 'Kosten gesamt', v: wCost.toFixed(2), unit: 'CHF', max: 0, color: '#475569', pre: true },
+                    { label: 'Ø Kalorien/Tag', v: Math.round(avgKcal), unit: 'kcal', color: limitColor(avgKcal, goals.kcal) },
+                    { label: 'Protein gesamt', v: Math.round(wProtein * 10) / 10, unit: 'g', color: goalColor(wProtein, goals.protein * filled.length) },
+                    { label: 'Kosten gesamt', v: wCost.toFixed(2), unit: 'CHF', pre: true, color: limitColor(wCost, goals.kosten * filled.length) },
                   ].map(s => (
                     <div key={s.label} className="text-center">
                       <p className="text-lg font-black" style={{ color: s.color }}>
@@ -345,9 +372,9 @@ export default function TagPage() {
                           <span className="text-sm font-bold" style={{ color: limitColor(wp.kcal_total, goals.kcal) }}>
                             {Math.round(wp.kcal_total)} kcal
                           </span>
-                          <div className="flex gap-3 text-xs" style={{ color: '#64748b' }}>
-                            <span>{Math.round(wp.protein_total * 10) / 10}g P</span>
-                            <span style={{ color: '#94a3b8' }}>CHF {Number(wp.cost_total).toFixed(2)}</span>
+                          <div className="flex gap-3 text-xs">
+                            <span style={{ color: goalColor(wp.protein_total, goals.protein) }}>{Math.round(wp.protein_total * 10) / 10}g P</span>
+                            <span style={{ color: limitColor(Number(wp.cost_total), goals.kosten) }}>CHF {Number(wp.cost_total).toFixed(2)}</span>
                           </div>
                         </div>
                         <div className="h-1.5 rounded-full" style={{ background: '#f1f5f9' }}>
@@ -399,12 +426,14 @@ export default function TagPage() {
             <div className="rounded-2xl p-5 mb-5" style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { label: 'Kalorien', v: Math.round(totals.kcal),               max: goals.kcal,    display: `${Math.round(totals.kcal)}`, unit: 'kcal' },
-                  { label: 'Protein',  v: totals.protein,                         max: goals.protein, display: `${Math.round(totals.protein * 10) / 10}`, unit: 'g' },
-                  { label: 'Kosten',   v: totals.cost,                            max: 0,             display: totals.cost.toFixed(2), unit: 'CHF', pre: true },
-                ].map(s => (
+                  { label: 'Kalorien', v: Math.round(totals.kcal),               max: goals.kcal,    display: `${Math.round(totals.kcal)}`, unit: 'kcal', limit: true },
+                  { label: 'Protein',  v: totals.protein,                         max: goals.protein, display: `${Math.round(totals.protein * 10) / 10}`, unit: 'g', limit: false },
+                  { label: 'Kosten',   v: totals.cost,                            max: goals.kosten,  display: totals.cost.toFixed(2), unit: 'CHF', pre: true, limit: true },
+                ].map(s => {
+                  const color = s.limit ? limitColor(s.v, s.max) : goalColor(s.v, s.max)
+                  return (
                   <div key={s.label} className="text-center">
-                    <p className="text-2xl font-black" style={{ color: goalColor(s.v, s.max) }}>
+                    <p className="text-2xl font-black" style={{ color }}>
                       {s.pre ? `${s.display}` : s.display}
                       <span className="text-sm font-normal ml-0.5" style={{ color: '#94a3b8' }}>
                         {s.unit}
@@ -412,12 +441,12 @@ export default function TagPage() {
                     </p>
                     <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>{s.label}</p>
                     {s.max > 0 && (
-                      <p className="text-xs mt-0.5 font-semibold" style={{ color: goalColor(s.v, s.max) }}>
+                      <p className="text-xs mt-0.5 font-semibold" style={{ color }}>
                         {Math.round((s.v / s.max) * 100)}%
                       </p>
                     )}
                   </div>
-                ))}
+                )})}
               </div>
             </div>
           )}
@@ -447,7 +476,8 @@ export default function TagPage() {
             </button>
           </div>
           <div className="space-y-3">
-            {MEAL_TYPES.map(({ key, label, color, bg, border }) => {
+            {MEAL_TYPE_ORDER.map(key => {
+              const { label, color, bg, border } = MEAL_TYPE_META[key]
               const sectionMeals = meals.filter(m => m.meal_type === key)
               if (hideEmpty && sectionMeals.length === 0) return null
               return (
@@ -472,8 +502,12 @@ export default function TagPage() {
                       <div key={meal.id} className="px-5 py-4" style={{ borderBottom: '1px solid #f8fafc' }}>
                         <div className="flex items-center justify-between mb-2.5">
                           <span className="text-sm font-bold" style={{ color: '#1e293b' }}>{meal.name}</span>
-                          <button onClick={() => deleteMeal(meal.id)}
-                            className="text-xs transition-all" style={{ color: '#94a3b8' }}>Entfernen</button>
+                          <div className="flex gap-3">
+                            <button onClick={() => duplicateMeal(meal)}
+                              className="text-xs transition-all" style={{ color: '#4f46e5' }}>Nochmal</button>
+                            <button onClick={() => deleteMeal(meal.id)}
+                              className="text-xs transition-all" style={{ color: '#94a3b8' }}>Entfernen</button>
+                          </div>
                         </div>
                         <div className="space-y-1.5">
                           {meal.meal_items?.map(item => (

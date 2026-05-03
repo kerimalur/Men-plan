@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { loadSettings, saveSetting } from '@/lib/settings'
 import { supabase } from '@/lib/supabase'
+import { MEAL_TYPE_LABELS } from '@/lib/mealTypes'
 
 interface Field {
   key: string
@@ -18,13 +19,6 @@ const FIELDS: Field[] = [
   { key: 'protein_ziel', label: 'Proteinziel',   description: 'Tägliche Proteinmenge',                       unit: 'g',   min: 50,   step: 5 },
   { key: 'kosten_ziel',  label: 'Kostenbudget',  description: 'Tägliches Budget für Lebensmittel',           unit: 'CHF', min: 5,    step: 1 },
 ]
-
-const MEAL_TYPE_LABELS: Record<string, string> = {
-  fruehstueck: 'Frühstück',
-  mittagessen: 'Mittagessen',
-  abendessen:  'Abendessen',
-  snack:       'Snack',
-}
 
 const EVENT_LABELS: Record<string, string> = {
   training:   'Trainingstag',
@@ -181,18 +175,38 @@ export default function EinstellungenPage() {
         style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
       >
         <h2 className="text-sm font-semibold mb-3" style={{ color: '#1e293b' }}>Farbskala</h2>
-        <div className="space-y-2">
-          {[
-            { color: 'bg-green-500',  label: 'Grün',   desc: '≥ 100% des Ziels erreicht' },
-            { color: 'bg-amber-500',  label: 'Orange', desc: '80–99% des Ziels erreicht' },
-            { color: 'bg-red-500',    label: 'Rot',    desc: '< 80% des Ziels' },
-          ].map(item => (
-            <div key={item.label} className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${item.color}`} />
-              <span className="text-xs font-medium w-12" style={{ color: '#1e293b' }}>{item.label}</span>
-              <span className="text-xs" style={{ color: '#94a3b8' }}>{item.desc}</span>
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kalorien &amp; Kosten (Limit)</p>
+            <div className="space-y-1.5">
+              {[
+                { color: 'bg-green-500', label: 'Grün', desc: 'Unter dem Limit (< 100%)' },
+                { color: 'bg-red-500', label: 'Rot', desc: 'Limit überschritten (≥ 100%)' },
+              ].map(item => (
+                <div key={item.label + '-limit'} className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${item.color}`} />
+                  <span className="text-xs font-medium w-12" style={{ color: '#1e293b' }}>{item.label}</span>
+                  <span className="text-xs" style={{ color: '#94a3b8' }}>{item.desc}</span>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+          <div>
+            <p className="text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Protein (Ziel)</p>
+            <div className="space-y-1.5">
+              {[
+                { color: 'bg-red-500', label: 'Rot', desc: 'Ziel nicht erreicht (< 100%)' },
+                { color: 'bg-amber-500', label: 'Orange', desc: 'Fast erreicht (80–99%)' },
+                { color: 'bg-green-500', label: 'Grün', desc: 'Ziel erreicht (≥ 100%)' },
+              ].map(item => (
+                <div key={item.label + '-goal'} className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${item.color}`} />
+                  <span className="text-xs font-medium w-12" style={{ color: '#1e293b' }}>{item.label}</span>
+                  <span className="text-xs" style={{ color: '#94a3b8' }}>{item.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 

@@ -1,10 +1,16 @@
+interface FoodLike {
+  calories_per_100: number
+  protein_per_100: number
+  cost_per_100: number
+}
+
 /**
  * Converts the entered amount+unit to a factor relative to 100 base units.
  * Solid foods (unit='g'): factor = amount / 100
  * Liquid foods (unit='ml'): factor depends on entered unit (ml, dl, l)
  */
-export function toFactor(amount, unit) {
-  const n = parseFloat(amount) || 0
+export function toFactor(amount: number | string, unit: string): number {
+  const n = typeof amount === 'string' ? parseFloat(amount) || 0 : amount
   switch (unit) {
     case 'g':   return n / 100
     case 'ml':  return n / 100
@@ -18,7 +24,7 @@ export function toFactor(amount, unit) {
 /**
  * Calculates kcal, protein and cost for a given food at a given amount/unit.
  */
-export function calcNutrition(food, amount, unit) {
+export function calcNutrition(food: FoodLike, amount: number | string, unit: string) {
   const factor = toFactor(amount, unit)
   return {
     kcal:    Math.round(food.calories_per_100 * factor * 10) / 10,
@@ -27,7 +33,9 @@ export function calcNutrition(food, amount, unit) {
   }
 }
 
-export function sumItems(items) {
+interface Summable { kcal: number; protein: number; cost: number }
+
+export function sumItems(items: Summable[]) {
   return items.reduce(
     (acc, item) => ({
       kcal:    Math.round((acc.kcal    + item.kcal)    * 10)  / 10,
