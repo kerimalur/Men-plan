@@ -46,7 +46,13 @@ export default function EinkaufslistePage() {
   const [syncing, setSyncing]     = useState(false)
   const [syncItems, setSyncItems] = useState<SyncItem[]>([])
   const [showSync, setShowSync]   = useState(false)
-  const [weekStart, setWeekStart] = useState(() => toDateStr(getMondayOfWeek(new Date())))
+  const [dateFrom, setDateFrom]   = useState(() => toDateStr(getMondayOfWeek(new Date())))
+  const [dateTo, setDateTo]       = useState(() => {
+    const end = getMondayOfWeek(new Date())
+    end.setDate(end.getDate() + 6)
+    return toDateStr(end)
+  })
+  const [ownedItems, setOwnedItems] = useState<Set<number>>(new Set())
   const [copied, setCopied] = useState(false)
   const router = useRouter()
 
@@ -81,12 +87,19 @@ export default function EinkaufslistePage() {
     await supabase.from('shopping_list').delete().eq('checked', true); await load()
   }
 
+  function toggleOwned(idx: number) {
+    setOwnedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx); else next.add(idx)
+      return next
+    })
+  }
+
   // ── Sync from meal plan ──────────────────────────────────────
   async function syncFromPlan() {
     setSyncing(true)
-    const start = weekStart
-    const endDate = new Date(weekStart + 'T12:00:00'); endDate.setDate(endDate.getDate() + 6)
-    const end = toDateStr(endDate)
+    const start = dateFrom
+    const end = dateTo
 
     // 1. Get all meal_plans for the week
     const { data: plans } = await supabase.from('meal_plans').select('id').gte('date', start).lte('date', end)
@@ -108,15 +121,23 @@ export default function EinkaufslistePage() {
 
     if (!mealItems?.length) { setSyncItems([]); setSyncing(false); return }
 
-    // 4. Group by food_id (or food_name if deleted)
+    // 4. Group by normalised food_name (case-insensitive) so duplicates
+    //    (e.g. one entry with food_id, one without) are properly merged.
+    const nameToKey: Record<string, string> = {}
     const grouped: Record<string, SyncItem> = {}
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mealItems.forEach((item: any) => {
-      const key      = item.food_id || item.food_name
+      const normName  = item.food_name.toLowerCase().trim()
       const foodsUnit = Array.isArray(item.foods) ? item.foods[0]?.unit : item.foods?.unit
-      const baseUnit = foodsUnit || (item.unit === 'stk' ? 'stk' : item.unit === 'g' ? 'g' : 'ml')
-      const baseAmt  = toBaseAmount(item.amount, item.unit)
+      const baseUnit  = foodsUnit || (item.unit === 'stk' ? 'stk' : item.unit === 'g' ? 'g' : 'ml')
+      const baseAmt   = toBaseAmount(item.amount, item.unit)
+
+      // Prefer food_id as canonical key; fall back to normalised name
+      const canonicalKey = item.food_id || normName
+      // If we've already seen this name under a different key, reuse that key
+      const key = nameToKey[normName] ?? canonicalKey
+      nameToKey[normName] = key
 
       if (!grouped[key]) {
         grouped[key] = { food_name: item.food_name, total: 0, unit: baseUnit, food_id: item.food_id }
@@ -125,6 +146,7 @@ export default function EinkaufslistePage() {
     })
 
     setSyncItems(Object.values(grouped).sort((a, b) => a.food_name.localeCompare(b.food_name)))
+    setOwnedItems(new Set())
     setSyncing(false)
   }
 
@@ -137,9 +159,10 @@ export default function EinkaufslistePage() {
   }
 
   async function addAllToList() {
-    if (!syncItems.length) return
+    const toAdd = syncItems.filter((_, i) => !ownedItems.has(i))
+    if (!toAdd.length) return
     await supabase.from('shopping_list').insert(
-      syncItems.map(item => ({ item: item.food_name, quantity: formatAmount(item.total, item.unit) }))
+      toAdd.map(item => ({ item: item.food_name, quantity: formatAmount(item.total, item.unit) }))
     )
     await load()
     setShowSync(false)
@@ -248,36 +271,44 @@ export default function EinkaufslistePage() {
           className="rounded-2xl p-5 mb-5"
           style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
         >
-          <h2 className="text-sm font-semibold mb-3" style={{ color: '#1e293b' }}>Woche synchronisieren</h2>
+          <h2 className="text-sm font-semibold mb-3" style={{ color: '#1e293b' }}>Einkaufsliste berechnen</h2>
           <p className="text-xs mb-4" style={{ color: '#94a3b8' }}>
-            Berechnet alle benötigten Zutaten aus dem Wochenplan und summiert sie auf.
+            Berechnet alle benötigten Zutaten aus dem Menüplan und summiert sie auf.
           </p>
-          <div className="flex items-center gap-2 mb-4">
-            <label className="text-xs shrink-0" style={{ color: '#64748b' }}>Wochenbeginn (Montag):</label>
-            <input
-              type="date"
-              value={weekStart}
-              onChange={e => setWeekStart(e.target.value)}
-              style={{
-                flex: 1,
-                background: 'white',
-                border: '1px solid #e2e8f0',
-                color: '#1e293b',
-                borderRadius: '0.5rem',
-                padding: '0.375rem 0.75rem',
-                fontSize: '0.875rem',
-                outline: 'none',
-              }}
-            />
-            <button
-              onClick={syncFromPlan}
-              disabled={syncing}
-              className="text-white px-4 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-opacity hover:opacity-90 shrink-0"
-              style={{ background: '#475569' }}
-            >
-              {syncing ? 'Lädt…' : 'Berechnen'}
-            </button>
+          <div className="space-y-2 mb-4">
+            <div className="flex items-center gap-2">
+              <label className="text-xs shrink-0 w-8" style={{ color: '#64748b' }}>Von:</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                style={{
+                  flex: 1, background: 'white', border: '1px solid #e2e8f0', color: '#1e293b',
+                  borderRadius: '0.5rem', padding: '0.375rem 0.75rem', fontSize: '0.875rem', outline: 'none',
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs shrink-0 w-8" style={{ color: '#64748b' }}>Bis:</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                style={{
+                  flex: 1, background: 'white', border: '1px solid #e2e8f0', color: '#1e293b',
+                  borderRadius: '0.5rem', padding: '0.375rem 0.75rem', fontSize: '0.875rem', outline: 'none',
+                }}
+              />
+            </div>
           </div>
+          <button
+            onClick={syncFromPlan}
+            disabled={syncing || !dateFrom || !dateTo}
+            className="w-full text-white py-2 rounded-xl text-sm font-semibold disabled:opacity-50 transition-opacity hover:opacity-90 mb-4"
+            style={{ background: '#475569' }}
+          >
+            {syncing ? 'Lädt…' : 'Berechnen'}
+          </button>
 
           {syncItems.length > 0 && (
             <>
@@ -291,16 +322,34 @@ export default function EinkaufslistePage() {
                     className="flex items-center justify-between px-4 py-2.5"
                     style={i > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}
                   >
-                    <span className="text-sm" style={{ color: '#1e293b' }}>{item.food_name}</span>
-                    <div className="flex items-center gap-3">
+                    <span
+                      className="text-sm flex-1 min-w-0 truncate"
+                      style={{ color: ownedItems.has(i) ? '#94a3b8' : '#1e293b',
+                               textDecoration: ownedItems.has(i) ? 'line-through' : 'none' }}
+                    >
+                      {item.food_name}
+                    </span>
+                    <div className="flex items-center gap-2 ml-3 shrink-0">
                       <span className="text-sm font-medium" style={{ color: '#64748b' }}>{formatAmount(item.total, item.unit)}</span>
                       <button
-                        onClick={() => addSyncItemToList(item)}
-                        className="text-xs font-medium transition-colors"
-                        style={{ color: '#475569' }}
+                        onClick={() => toggleOwned(i)}
+                        className="text-xs font-medium px-2 py-0.5 rounded-lg transition-colors"
+                        style={ownedItems.has(i)
+                          ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }
+                          : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}
+                        title={ownedItems.has(i) ? 'Als fehlend markieren' : 'Schon vorhanden'}
                       >
-                        + Liste
+                        {ownedItems.has(i) ? '✓ Hab ich' : 'Hab ich'}
                       </button>
+                      {!ownedItems.has(i) && (
+                        <button
+                          onClick={() => addSyncItemToList(item)}
+                          className="text-xs font-medium transition-colors"
+                          style={{ color: '#475569' }}
+                        >
+                          + Liste
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -310,7 +359,9 @@ export default function EinkaufslistePage() {
                 className="w-full text-white py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
                 style={{ background: '#059669' }}
               >
-                Alle zur Einkaufsliste hinzufügen
+                {ownedItems.size > 0
+                  ? `${syncItems.length - ownedItems.size} Artikel zur Liste hinzufügen`
+                  : 'Alle zur Einkaufsliste hinzufügen'}
               </button>
             </>
           )}

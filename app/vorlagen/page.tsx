@@ -18,6 +18,7 @@ interface Template {
   id: string
   name: string
   meal_type: string
+  category?: string | null
   meal_template_items: TemplateItem[]
 }
 
@@ -27,10 +28,11 @@ interface EditItem {
 }
 
 // ── Template Edit Modal ───────────────────────────────────────
-function TemplateEditModal({ template, onClose, onSaved }: {
-  template: Template; onClose: () => void; onSaved: () => void
+function TemplateEditModal({ template, onClose, onSaved, allCategories }: {
+  template: Template; onClose: () => void; onSaved: () => void; allCategories: string[]
 }) {
   const [name, setName] = useState(template.name)
+  const [category, setCategory] = useState(template.category || '')
   const [items, setItems] = useState<EditItem[]>(
     template.meal_template_items.map(ti => ({
       localId: ti.id,
@@ -84,7 +86,7 @@ function TemplateEditModal({ template, onClose, onSaved }: {
   async function save() {
     if (!name.trim()) return
     setSaving(true)
-    await supabase.from('meal_templates').update({ name: name.trim() }).eq('id', template.id)
+    await supabase.from('meal_templates').update({ name: name.trim(), category: category.trim() || null }).eq('id', template.id)
     await supabase.from('meal_template_items').delete().eq('template_id', template.id)
     if (items.length > 0) {
       await supabase.from('meal_template_items').insert(
@@ -117,6 +119,20 @@ function TemplateEditModal({ template, onClose, onSaved }: {
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Name</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kategorie (optional)</label>
+            <input
+              type="text"
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              placeholder="z.B. Fastfood, Salate, Suppen…"
+              list="edit-categories-list"
+              style={inputStyle}
+            />
+            <datalist id="edit-categories-list">
+              {allCategories.map(c => <option key={c} value={c} />)}
+            </datalist>
           </div>
           <div className="text-xs" style={{ color: '#94a3b8' }}>
             Typ: <span style={{ color: '#64748b', fontWeight: 600 }}>{MEAL_TYPE_LABELS[template.meal_type]}</span>
@@ -220,9 +236,10 @@ function TemplateEditModal({ template, onClose, onSaved }: {
 }
 
 // ── Template Create Modal ─────────────────────────────────────
-function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function TemplateCreateModal({ onClose, onSaved, allCategories }: { onClose: () => void; onSaved: () => void; allCategories: string[] }) {
   const [name, setName] = useState('')
-  const [mealType, setMealType] = useState('hauptmahlzeit')
+  const [mealType, setMealType] = useState('mittagessen')
+  const [category, setCategory] = useState('')
   const [items, setItems] = useState<EditItem[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Food[]>([])
@@ -268,7 +285,7 @@ function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
   async function save() {
     if (!name.trim() || items.length === 0) return
     setSaving(true)
-    const { data: tmpl } = await supabase.from('meal_templates').insert({ name: name.trim(), meal_type: mealType }).select().single()
+    const { data: tmpl } = await supabase.from('meal_templates').insert({ name: name.trim(), meal_type: mealType, category: category.trim() || null }).select().single()
     if (tmpl) {
       await supabase.from('meal_template_items').insert(
         items.map(item => ({ template_id: tmpl.id, food_id: item.food_id, amount: item.amount, unit: item.unit }))
@@ -302,10 +319,25 @@ function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
             <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="z.B. Porridge mit Beeren" style={inputStyle} />
           </div>
           <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kategorie (optional)</label>
+            <input
+              type="text"
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              placeholder="z.B. Fastfood, Salate, Suppen…"
+              list="create-categories-list"
+              style={inputStyle}
+            />
+            <datalist id="create-categories-list">
+              {allCategories.map(c => <option key={c} value={c} />)}
+            </datalist>
+          </div>
+          <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Typ</label>
             <select value={mealType} onChange={e => setMealType(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
               <option value="fruehstueck">Frühstück</option>
-              <option value="hauptmahlzeit">Hauptmahlzeit</option>
+              <option value="mittagessen">Mittagessen</option>
+              <option value="abendessen">Abendessen</option>
               <option value="snack">Snack</option>
             </select>
           </div>
@@ -388,12 +420,13 @@ function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
 }
 
 // ── Template Duplicate Modal ──────────────────────────────────
-function TemplateDuplicateModal({ template, onClose, onSaved }: {
-  template: Template; onClose: () => void; onSaved: () => void
+function TemplateDuplicateModal({ template, onClose, onSaved, allCategories }: {
+  template: Template; onClose: () => void; onSaved: () => void; allCategories: string[]
 }) {
-  const dupeType = (template.meal_type === 'mittagessen' || template.meal_type === 'abendessen') ? 'hauptmahlzeit' : template.meal_type
+  const dupeType = (template.meal_type === 'hauptmahlzeit') ? 'mittagessen' : template.meal_type
   const [name, setName] = useState(template.name + ' (Kopie)')
   const [mealType, setMealType] = useState(dupeType)
+  const [category, setCategory] = useState(template.category || '')
   const [saving, setSaving] = useState(false)
 
   const inputStyle: React.CSSProperties = {
@@ -410,7 +443,7 @@ function TemplateDuplicateModal({ template, onClose, onSaved }: {
     setSaving(true)
     const { data: tmpl } = await supabase
       .from('meal_templates')
-      .insert({ name: name.trim(), meal_type: mealType })
+      .insert({ name: name.trim(), meal_type: mealType, category: category.trim() || null })
       .select()
       .single()
     if (tmpl && template.meal_template_items.length > 0) {
@@ -443,10 +476,25 @@ function TemplateDuplicateModal({ template, onClose, onSaved }: {
             <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
           </div>
           <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kategorie (optional)</label>
+            <input
+              type="text"
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              placeholder="z.B. Fastfood, Salate, Suppen…"
+              list="dupe-categories-list"
+              style={inputStyle}
+            />
+            <datalist id="dupe-categories-list">
+              {allCategories.map(c => <option key={c} value={c} />)}
+            </datalist>
+          </div>
+          <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Mahlzeit-Typ</label>
             <select value={mealType} onChange={e => setMealType(e.target.value)} style={selectStyle}>
               <option value="fruehstueck">Frühstück</option>
-              <option value="hauptmahlzeit">Hauptmahlzeit</option>
+              <option value="mittagessen">Mittagessen</option>
+              <option value="abendessen">Abendessen</option>
               <option value="snack">Snack</option>
             </select>
           </div>
@@ -485,6 +533,7 @@ export default function VorlagenPage() {
   const [duplicatingTemplate, setDuplicatingTemplate] = useState<Template | null>(null)
   const [creatingTemplate, setCreatingTemplate] = useState(false)
   const [activeTab, setActiveTab] = useState<'meal' | 'day' | 'week'>('meal')
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
   useEffect(() => { load() }, [])
 
@@ -511,11 +560,22 @@ export default function VorlagenPage() {
     await load()
   }
 
+  // Derive all unique categories from templates (sorted)
+  const allCategories = Array.from(
+    new Set(templates.map(t => t.category).filter((c): c is string => !!c))
+  ).sort()
+
+  // Filter templates by active category
+  const visibleTemplates = activeCategory
+    ? templates.filter(t => t.category === activeCategory)
+    : templates
+
   const grouped = MEAL_TYPE_ORDER.reduce<Record<string, Template[]>>((acc, type) => {
-    if (type === 'hauptmahlzeit') {
-      acc[type] = templates.filter(t => t.meal_type === 'hauptmahlzeit' || t.meal_type === 'mittagessen' || t.meal_type === 'abendessen')
+    if (type === 'mittagessen') {
+      // Also include legacy 'hauptmahlzeit' under Mittagessen
+      acc[type] = visibleTemplates.filter(t => t.meal_type === 'mittagessen' || t.meal_type === 'hauptmahlzeit')
     } else {
-      acc[type] = templates.filter(t => t.meal_type === type)
+      acc[type] = visibleTemplates.filter(t => t.meal_type === type)
     }
     return acc
   }, {})
@@ -546,7 +606,7 @@ export default function VorlagenPage() {
           { key: 'day' as const, label: 'Tagespläne', count: dayPlanTemplates.length },
           { key: 'week' as const, label: 'Wochenpläne', count: weekPlanTemplates.length },
         ]).map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+          <button key={tab.key} onClick={() => { setActiveTab(tab.key); setActiveCategory(null) }}
             className="flex-1 py-2 text-xs rounded-lg font-semibold transition-all"
             style={activeTab === tab.key ? { background: 'white', color: '#1e293b', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } : { color: '#94a3b8' }}>
             {tab.label} ({tab.count})
@@ -554,15 +614,42 @@ export default function VorlagenPage() {
         ))}
       </div>
 
+      {/* Category filter pills (meal tab only) */}
+      {!loading && activeTab === 'meal' && allCategories.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <button
+            onClick={() => setActiveCategory(null)}
+            className="text-xs px-3 py-1 rounded-full font-medium transition-all"
+            style={activeCategory === null
+              ? { background: '#475569', color: 'white' }
+              : { background: '#f1f5f9', color: '#64748b' }}
+          >
+            Alle
+          </button>
+          {allCategories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat === activeCategory ? null : cat)}
+              className="text-xs px-3 py-1 rounded-full font-medium transition-all"
+              style={activeCategory === cat
+                ? { background: '#475569', color: 'white' }
+                : { background: '#f1f5f9', color: '#64748b' }}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && <div className="text-center py-10 text-sm" style={{ color: '#64748b' }}>Laden…</div>}
 
       {/* Meal templates tab */}
       {!loading && activeTab === 'meal' && (
         <>
-          {templates.length === 0 && (
+          {visibleTemplates.length === 0 && (
             <div className="p-10 text-center text-sm rounded-2xl"
               style={{ background: 'white', border: '1px solid #f1f5f9', color: '#94a3b8', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              Noch keine Mahlzeit-Vorlagen vorhanden.<br />
+              {activeCategory ? `Keine Vorlagen in Kategorie „${activeCategory}".` : 'Noch keine Mahlzeit-Vorlagen vorhanden.'}<br />
               <span className="text-xs">Beim Hinzufügen einer Mahlzeit kannst du sie als Vorlage speichern.</span>
             </div>
           )}
@@ -588,8 +675,20 @@ export default function VorlagenPage() {
                     style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
                   >
                     <div className="flex items-start justify-between mb-3">
-                      <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{template.name}</span>
-                      <div className="flex gap-3 ml-4">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{template.name}</span>
+                        {template.category && (
+                          <span
+                            className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full cursor-pointer"
+                            style={{ background: '#f1f5f9', color: '#64748b' }}
+                            onClick={() => setActiveCategory(template.category ?? null)}
+                            title={`Kategorie: ${template.category}`}
+                          >
+                            {template.category}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-3 ml-4 shrink-0">
                         <button
                           onClick={() => setEditingTemplate(template)}
                           className="text-xs transition-colors"
@@ -770,6 +869,7 @@ export default function VorlagenPage() {
           template={editingTemplate}
           onClose={() => setEditingTemplate(null)}
           onSaved={() => { setEditingTemplate(null); load() }}
+          allCategories={allCategories}
         />
       )}
 
@@ -778,6 +878,7 @@ export default function VorlagenPage() {
           template={duplicatingTemplate}
           onClose={() => setDuplicatingTemplate(null)}
           onSaved={() => { setDuplicatingTemplate(null); load() }}
+          allCategories={allCategories}
         />
       )}
 
@@ -785,6 +886,7 @@ export default function VorlagenPage() {
         <TemplateCreateModal
           onClose={() => setCreatingTemplate(false)}
           onSaved={() => { setCreatingTemplate(false); load() }}
+          allCategories={allCategories}
         />
       )}
     </div>

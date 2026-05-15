@@ -19,7 +19,8 @@ interface Goals  { kcal: number; protein: number; kosten: number }
 
 function isDayComplete(plan?: Plan) {
   if (!plan?.meals) return false
-  const types = new Set(plan.meals.map(m => m.meal_type))
+  // Normalise legacy 'hauptmahlzeit' → 'mittagessen'
+  const types = new Set(plan.meals.map(m => m.meal_type === 'hauptmahlzeit' ? 'mittagessen' : m.meal_type))
   return MEAL_TYPE_ORDER.every(t => types.has(t))
 }
 

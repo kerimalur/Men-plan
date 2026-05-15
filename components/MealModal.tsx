@@ -85,8 +85,10 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
   const [customName, setCustomName] = useState('')
   const [customKcal, setCustomKcal] = useState('')
   const [customProtein, setCustomProtein] = useState('')
-  const [customAmount, setCustomAmount] = useState('')
-  const [customUnit, setCustomUnit] = useState('g')
+  const [customCost, setCustomCost]       = useState('')
+  const [customAmount, setCustomAmount]   = useState('')
+  const [customUnit, setCustomUnit]       = useState('g')
+  const [savingCustomFood, setSavingCustomFood] = useState(false)
 
   // Save-to-DB prompt
   const [showSavePrompt, setShowSavePrompt] = useState(false)
@@ -165,6 +167,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
     const amt = parseFloat(customAmount)
     const kcalPer100 = parseFloat(customKcal) || 0
     const protPer100 = parseFloat(customProtein) || 0
+    const costPer100 = parseFloat(customCost) || 0
     const factor = customUnit === 'stk' ? amt : amt / 100
     setItems(prev => [...prev, {
       food_id:   null,
@@ -173,12 +176,34 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
       unit:      customUnit,
       kcal:      Math.round(kcalPer100 * factor * 10) / 10,
       protein:   Math.round(protPer100 * factor * 10) / 10,
-      cost:      0,
+      cost:      Math.round(costPer100 * factor * 100) / 100,
       isCustom:  true,
       customKcalPer100: kcalPer100,
       customProteinPer100: protPer100,
     }])
-    setCustomName(''); setCustomKcal(''); setCustomProtein(''); setCustomAmount('')
+    setCustomName(''); setCustomKcal(''); setCustomProtein(''); setCustomCost(''); setCustomAmount('')
+  }
+
+  async function saveCustomFoodToDB() {
+    if (!customName.trim() || !customKcal) return
+    setSavingCustomFood(true)
+    const dbUnit = customUnit === 'stk' ? 'stk' : customUnit === 'ml' ? 'ml' : 'g'
+    const { data: newFood } = await supabase.from('foods').insert({
+      name: customName.trim(),
+      calories_per_100: parseFloat(customKcal) || 0,
+      protein_per_100:  parseFloat(customProtein) || 0,
+      cost_per_100:     parseFloat(customCost) || 0,
+      unit: dbUnit,
+    }).select().single()
+    setSavingCustomFood(false)
+    if (newFood) {
+      // Switch to search mode with the newly saved food pre-selected
+      setAddMode('search')
+      setSelectedFood(newFood as Food)
+      setSearchQuery(newFood.name)
+      setUnit(dbUnit === 'ml' ? 'ml' : dbUnit === 'stk' ? 'stk' : 'g')
+      setCustomName(''); setCustomKcal(''); setCustomProtein(''); setCustomCost('')
+    }
   }
 
   function handleFinishSave() {
@@ -468,12 +493,12 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                   placeholder="Name (z.B. Mehl, Honig…)"
                   style={inputStyle}
                 />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <input
                     type="number"
                     value={customKcal}
                     onChange={e => setCustomKcal(e.target.value)}
-                    placeholder="kcal / 100g (oder /Stk.)"
+                    placeholder="kcal/100g"
                     min="0"
                     style={inputStyle}
                   />
@@ -481,43 +506,61 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                     type="number"
                     value={customProtein}
                     onChange={e => setCustomProtein(e.target.value)}
-                    placeholder="Protein g / 100g"
+                    placeholder="Protein/100g"
                     min="0"
                     style={inputStyle}
                   />
-                </div>
-                <div className="flex gap-2">
                   <input
                     type="number"
-                    value={customAmount}
-                    onChange={e => setCustomAmount(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && addCustomItem()}
-                    placeholder="Menge"
+                    value={customCost}
+                    onChange={e => setCustomCost(e.target.value)}
+                    placeholder="CHF/100g"
                     min="0"
-                    step="1"
-                    style={{ ...inputStyle, width: undefined, flex: 1 }}
+                    step="0.01"
+                    style={inputStyle}
                   />
-                  <select
-                    value={customUnit}
-                    onChange={e => setCustomUnit(e.target.value)}
-                    style={selectStyle}
-                  >
-                    <option value="g">g</option>
-                    <option value="ml">ml</option>
-                    <option value="stk">Stk.</option>
-                  </select>
-                  <button
-                    onClick={addCustomItem}
-                    disabled={!customName.trim() || !customAmount || !customKcal}
-                    className="text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
-                    style={{ background: '#475569' }}
-                  >
-                    +
-                  </button>
                 </div>
-                <p className="text-xs" style={{ color: '#94a3b8' }}>
-                  Eigene Lebensmittel werden getrackt. Beim Speichern kannst du sie optional in die Datenbank aufnehmen.
-                </p>
+                {/* Inline save to DB */}
+                <button
+                  onClick={saveCustomFoodToDB}
+                  disabled={!customName.trim() || !customKcal || savingCustomFood}
+                  className="w-full py-1.5 rounded-lg text-xs font-medium disabled:opacity-40 transition-opacity hover:opacity-80"
+                  style={{ background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}
+                >
+                  {savingCustomFood ? 'Speichern…' : '✨ In Datenbank speichern & Menge eingeben'}
+                </button>
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.5rem' }}>
+                  <p className="text-xs mb-2" style={{ color: '#94a3b8' }}>Oder direkt hinzufügen (ohne Datenbank):</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={customAmount}
+                      onChange={e => setCustomAmount(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addCustomItem()}
+                      placeholder="Menge"
+                      min="0"
+                      step="1"
+                      style={{ ...inputStyle, width: undefined, flex: 1 }}
+                    />
+                    <select
+                      value={customUnit}
+                      onChange={e => setCustomUnit(e.target.value)}
+                      style={selectStyle}
+                    >
+                      <option value="g">g</option>
+                      <option value="ml">ml</option>
+                      <option value="stk">Stk.</option>
+                    </select>
+                    <button
+                      onClick={addCustomItem}
+                      disabled={!customName.trim() || !customAmount || !customKcal}
+                      className="text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
+                      style={{ background: '#475569' }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               </>
             )}
           </div>

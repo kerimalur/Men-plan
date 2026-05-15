@@ -27,14 +27,16 @@ interface MealTemplate {
 
 const SLOT_LABELS: Record<string, string> = {
   fruehstueck: 'Frühstück',
-  hauptmahlzeit: 'Hauptmahlzeit',
-  snack: 'Snack',
+  mittagessen: 'Mittagessen',
+  abendessen:  'Abendessen',
+  snack:       'Snack',
 }
 
 function defaultSlot(mealType: string): string {
   if (mealType === 'fruehstueck') return 'fruehstueck'
   if (mealType === 'snack') return 'snack'
-  return 'hauptmahlzeit'
+  if (mealType === 'abendessen') return 'abendessen'
+  return 'mittagessen' // hauptmahlzeit + mittagessen → mittagessen
 }
 
 export default function LoadTemplateModal({ dateStr, onClose, onLoaded }: {
