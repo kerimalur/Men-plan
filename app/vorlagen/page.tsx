@@ -27,9 +27,11 @@ interface EditItem {
   food_id: string; food_name: string; amount: number; unit: string
 }
 
+interface TemplateCategory { id: string; name: string }
+
 // ── Template Edit Modal ───────────────────────────────────────
-function TemplateEditModal({ template, onClose, onSaved, allCategories }: {
-  template: Template; onClose: () => void; onSaved: () => void; allCategories: string[]
+function TemplateEditModal({ template, onClose, onSaved, templateCategories }: {
+  template: Template; onClose: () => void; onSaved: () => void; templateCategories: TemplateCategory[]
 }) {
   const [name, setName] = useState(template.name)
   const [category, setCategory] = useState(template.category || '')
@@ -122,17 +124,10 @@ function TemplateEditModal({ template, onClose, onSaved, allCategories }: {
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kategorie (optional)</label>
-            <input
-              type="text"
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              placeholder="z.B. Fastfood, Salate, Suppen…"
-              list="edit-categories-list"
-              style={inputStyle}
-            />
-            <datalist id="edit-categories-list">
-              {allCategories.map(c => <option key={c} value={c} />)}
-            </datalist>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={{ ...inputStyle }}>
+              <option value="">Keine Kategorie</option>
+              {templateCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
           </div>
           <div className="text-xs" style={{ color: '#94a3b8' }}>
             Typ: <span style={{ color: '#64748b', fontWeight: 600 }}>{MEAL_TYPE_LABELS[template.meal_type]}</span>
@@ -236,9 +231,9 @@ function TemplateEditModal({ template, onClose, onSaved, allCategories }: {
 }
 
 // ── Template Create Modal ─────────────────────────────────────
-function TemplateCreateModal({ onClose, onSaved, allCategories }: { onClose: () => void; onSaved: () => void; allCategories: string[] }) {
+function TemplateCreateModal({ onClose, onSaved, templateCategories }: { onClose: () => void; onSaved: () => void; templateCategories: TemplateCategory[] }) {
   const [name, setName] = useState('')
-  const [mealType, setMealType] = useState('mittagessen')
+  const [mealType, setMealType] = useState('hauptmahlzeit')
   const [category, setCategory] = useState('')
   const [items, setItems] = useState<EditItem[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -320,24 +315,16 @@ function TemplateCreateModal({ onClose, onSaved, allCategories }: { onClose: () 
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kategorie (optional)</label>
-            <input
-              type="text"
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              placeholder="z.B. Fastfood, Salate, Suppen…"
-              list="create-categories-list"
-              style={inputStyle}
-            />
-            <datalist id="create-categories-list">
-              {allCategories.map(c => <option key={c} value={c} />)}
-            </datalist>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={{ ...inputStyle }}>
+              <option value="">Keine Kategorie</option>
+              {templateCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Typ</label>
             <select value={mealType} onChange={e => setMealType(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
               <option value="fruehstueck">Frühstück</option>
-              <option value="mittagessen">Mittagessen</option>
-              <option value="abendessen">Abendessen</option>
+              <option value="hauptmahlzeit">Hauptmahlzeit</option>
               <option value="snack">Snack</option>
             </select>
           </div>
@@ -420,10 +407,10 @@ function TemplateCreateModal({ onClose, onSaved, allCategories }: { onClose: () 
 }
 
 // ── Template Duplicate Modal ──────────────────────────────────
-function TemplateDuplicateModal({ template, onClose, onSaved, allCategories }: {
-  template: Template; onClose: () => void; onSaved: () => void; allCategories: string[]
+function TemplateDuplicateModal({ template, onClose, onSaved, templateCategories }: {
+  template: Template; onClose: () => void; onSaved: () => void; templateCategories: TemplateCategory[]
 }) {
-  const dupeType = (template.meal_type === 'hauptmahlzeit') ? 'mittagessen' : template.meal_type
+  const dupeType = (template.meal_type === 'mittagessen' || template.meal_type === 'abendessen') ? 'hauptmahlzeit' : template.meal_type
   const [name, setName] = useState(template.name + ' (Kopie)')
   const [mealType, setMealType] = useState(dupeType)
   const [category, setCategory] = useState(template.category || '')
@@ -477,24 +464,16 @@ function TemplateDuplicateModal({ template, onClose, onSaved, allCategories }: {
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kategorie (optional)</label>
-            <input
-              type="text"
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              placeholder="z.B. Fastfood, Salate, Suppen…"
-              list="dupe-categories-list"
-              style={inputStyle}
-            />
-            <datalist id="dupe-categories-list">
-              {allCategories.map(c => <option key={c} value={c} />)}
-            </datalist>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={inputStyle}>
+              <option value="">Keine Kategorie</option>
+              {templateCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Mahlzeit-Typ</label>
             <select value={mealType} onChange={e => setMealType(e.target.value)} style={selectStyle}>
               <option value="fruehstueck">Frühstück</option>
-              <option value="mittagessen">Mittagessen</option>
-              <option value="abendessen">Abendessen</option>
+              <option value="hauptmahlzeit">Hauptmahlzeit</option>
               <option value="snack">Snack</option>
             </select>
           </div>
@@ -528,12 +507,15 @@ interface PlanTemplate {
 export default function VorlagenPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [planTemplates, setPlanTemplates] = useState<PlanTemplate[]>([])
+  const [templateCategories, setTemplateCategories] = useState<TemplateCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const [duplicatingTemplate, setDuplicatingTemplate] = useState<Template | null>(null)
   const [creatingTemplate, setCreatingTemplate] = useState(false)
   const [activeTab, setActiveTab] = useState<'meal' | 'day' | 'week'>('meal')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [newCatName, setNewCatName] = useState('')
+  const [savingCat, setSavingCat] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -545,6 +527,8 @@ export default function VorlagenPage() {
     ])
     setTemplates((mealRes.data as Template[]) || [])
     setPlanTemplates((planRes.data as PlanTemplate[]) || [])
+    const { data: cats } = await supabase.from('template_categories').select('id, name').order('name')
+    setTemplateCategories((cats as TemplateCategory[]) || [])
     setLoading(false)
   }
 
@@ -560,23 +544,35 @@ export default function VorlagenPage() {
     await load()
   }
 
-  // Derive all unique categories from templates (sorted)
-  const allCategories = Array.from(
-    new Set(templates.map(t => t.category).filter((c): c is string => !!c))
-  ).sort()
+  async function addCategory() {
+    if (!newCatName.trim()) return
+    setSavingCat(true)
+    await supabase.from('template_categories').insert({ name: newCatName.trim() })
+    setNewCatName('')
+    setSavingCat(false)
+    const { data: cats } = await supabase.from('template_categories').select('id, name').order('name')
+    setTemplateCategories((cats as TemplateCategory[]) || [])
+  }
+
+  async function deleteCategory(id: string) {
+    if (!confirm('Kategorie wirklich löschen?')) return
+    // Remove category from templates that use it
+    const cat = templateCategories.find(c => c.id === id)
+    if (cat) await supabase.from('meal_templates').update({ category: null }).eq('category', cat.name)
+    await supabase.from('template_categories').delete().eq('id', id)
+    if (activeCategory === cat?.name) setActiveCategory(null)
+    const { data: cats } = await supabase.from('template_categories').select('id, name').order('name')
+    setTemplateCategories((cats as TemplateCategory[]) || [])
+    await load()
+  }
 
   // Filter templates by active category
   const visibleTemplates = activeCategory
     ? templates.filter(t => t.category === activeCategory)
     : templates
 
-  const grouped = MEAL_TYPE_ORDER.reduce<Record<string, Template[]>>((acc, type) => {
-    if (type === 'mittagessen') {
-      // Also include legacy 'hauptmahlzeit' under Mittagessen
-      acc[type] = visibleTemplates.filter(t => t.meal_type === 'mittagessen' || t.meal_type === 'hauptmahlzeit')
-    } else {
-      acc[type] = visibleTemplates.filter(t => t.meal_type === type)
-    }
+  const grouped = (['fruehstueck', 'hauptmahlzeit', 'snack'] as const).reduce<Record<string, Template[]>>((acc, type) => {
+    acc[type] = visibleTemplates.filter(t => t.meal_type === type)
     return acc
   }, {})
 
@@ -615,7 +611,7 @@ export default function VorlagenPage() {
       </div>
 
       {/* Category filter pills (meal tab only) */}
-      {!loading && activeTab === 'meal' && allCategories.length > 0 && (
+      {!loading && activeTab === 'meal' && templateCategories.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-4">
           <button
             onClick={() => setActiveCategory(null)}
@@ -626,16 +622,16 @@ export default function VorlagenPage() {
           >
             Alle
           </button>
-          {allCategories.map(cat => (
+          {templateCategories.map(cat => (
             <button
-              key={cat}
-              onClick={() => setActiveCategory(cat === activeCategory ? null : cat)}
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.name === activeCategory ? null : cat.name)}
               className="text-xs px-3 py-1 rounded-full font-medium transition-all"
-              style={activeCategory === cat
+              style={activeCategory === cat.name
                 ? { background: '#475569', color: 'white' }
                 : { background: '#f1f5f9', color: '#64748b' }}
             >
-              {cat}
+              {cat.name}
             </button>
           ))}
         </div>
@@ -654,13 +650,14 @@ export default function VorlagenPage() {
             </div>
           )}
 
-          {MEAL_TYPE_ORDER.map(type => {
-        const list = grouped[type]
+          {(['fruehstueck', 'hauptmahlzeit', 'snack'] as const).map(type => {
+        const list = grouped[type] ?? []
         if (!list.length) return null
+        const sectionLabel = type === 'fruehstueck' ? 'Frühstück' : type === 'hauptmahlzeit' ? 'Hauptmahlzeit' : 'Snack'
         return (
           <div key={type} className="mb-6">
             <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94a3b8' }}>
-              {MEAL_TYPE_LABELS[type]}
+              {sectionLabel}
             </h2>
             <div className="space-y-3">
               {list.map(template => {
@@ -837,18 +834,24 @@ export default function VorlagenPage() {
                         className="text-xs transition-colors" style={{ color: '#dc2626' }}>Löschen</button>
                     </div>
                     <div className="space-y-2 mb-3">
-                      {sortedDays.map(day => (
-                        <div key={day.id}>
-                          <p className="text-xs font-bold mb-0.5" style={{ color: '#475569' }}>{dayNames[day.day_offset] || `Tag ${day.day_offset + 1}`}</p>
-                          <div className="flex flex-wrap gap-1">
-                            {(day.plan_template_meals || []).map(m => (
-                              <span key={m.id} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#f1f5f9', color: '#64748b' }}>
-                                {m.name}
-                              </span>
-                            ))}
+                      {sortedDays.map(day => {
+                        const TEMPLATE_MEAL_ORDER = ['fruehstueck', 'hauptmahlzeit', 'mittagessen', 'abendessen', 'snack']
+                        const sortedMeals = [...(day.plan_template_meals || [])].sort(
+                          (a, b) => TEMPLATE_MEAL_ORDER.indexOf(a.meal_type) - TEMPLATE_MEAL_ORDER.indexOf(b.meal_type)
+                        )
+                        return (
+                          <div key={day.id}>
+                            <p className="text-xs font-bold mb-0.5" style={{ color: '#475569' }}>{dayNames[day.day_offset] || `Tag ${day.day_offset + 1}`}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {sortedMeals.map(m => (
+                                <span key={m.id} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#f1f5f9', color: '#64748b' }}>
+                                  {m.name}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                     <div className="pt-2.5 flex gap-4 text-xs font-medium" style={{ borderTop: '1px solid #f1f5f9', color: '#64748b' }}>
                       <span>{Math.round(totalKcal)} kcal</span>
@@ -869,7 +872,7 @@ export default function VorlagenPage() {
           template={editingTemplate}
           onClose={() => setEditingTemplate(null)}
           onSaved={() => { setEditingTemplate(null); load() }}
-          allCategories={allCategories}
+          templateCategories={templateCategories}
         />
       )}
 
@@ -878,7 +881,7 @@ export default function VorlagenPage() {
           template={duplicatingTemplate}
           onClose={() => setDuplicatingTemplate(null)}
           onSaved={() => { setDuplicatingTemplate(null); load() }}
-          allCategories={allCategories}
+          templateCategories={templateCategories}
         />
       )}
 
@@ -886,8 +889,45 @@ export default function VorlagenPage() {
         <TemplateCreateModal
           onClose={() => setCreatingTemplate(false)}
           onSaved={() => { setCreatingTemplate(false); load() }}
-          allCategories={allCategories}
+          templateCategories={templateCategories}
         />
+      )}
+
+      {/* ── Vorlagenkategorien Verwaltung ─────────────────── */}
+      {!loading && activeTab === 'meal' && (
+        <div className="mt-8 pt-6" style={{ borderTop: '2px solid #f1f5f9' }}>
+          <h2 className="text-sm font-semibold mb-3" style={{ color: '#1e293b' }}>Vorlagenkategorien</h2>
+          <div className="rounded-2xl overflow-hidden mb-3"
+            style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            {templateCategories.length === 0 && (
+              <p className="text-xs px-4 py-3" style={{ color: '#94a3b8' }}>Noch keine Kategorien vorhanden.</p>
+            )}
+            {templateCategories.map((cat, i) => (
+              <div key={cat.id} className="flex items-center justify-between px-4 py-2.5"
+                style={i > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}>
+                <span className="text-sm" style={{ color: '#1e293b' }}>{cat.name}</span>
+                <button onClick={() => deleteCategory(cat.id)}
+                  className="text-xs transition-colors" style={{ color: '#dc2626' }}>Löschen</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newCatName}
+              onChange={e => setNewCatName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addCategory()}
+              placeholder="Neue Kategorie…"
+              className="flex-1 text-sm rounded-xl px-3 py-2 outline-none"
+              style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+            />
+            <button onClick={addCategory} disabled={!newCatName.trim() || savingCat}
+              className="text-white px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
+              style={{ background: '#475569' }}>
+              {savingCat ? '…' : '+ Hinzufügen'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

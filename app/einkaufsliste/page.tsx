@@ -13,6 +13,7 @@ interface SyncItem {
   total: number
   unit: string  // 'g' or 'ml'
   food_id: string | null
+  cost_total: number
 }
 
 function toBaseAmount(amount: number, unit: string): number {
@@ -113,10 +114,10 @@ export default function EinkaufslistePage() {
 
     const mealIds = meals.map(m => m.id)
 
-    // 3. Get all meal_items with food unit info
+    // 3. Get all meal_items with food unit info and cost
     const { data: mealItems } = await supabase
       .from('meal_items')
-      .select('food_id, food_name, amount, unit, foods(unit)')
+      .select('food_id, food_name, amount, unit, cost, foods(unit, cost_per_100)')
       .in('meal_id', mealIds)
 
     if (!mealItems?.length) { setSyncItems([]); setSyncing(false); return }
@@ -140,9 +141,10 @@ export default function EinkaufslistePage() {
       nameToKey[normName] = key
 
       if (!grouped[key]) {
-        grouped[key] = { food_name: item.food_name, total: 0, unit: baseUnit, food_id: item.food_id }
+        grouped[key] = { food_name: item.food_name, total: 0, unit: baseUnit, food_id: item.food_id, cost_total: 0 }
       }
       grouped[key].total += baseAmt
+      grouped[key].cost_total += Number(item.cost) || 0
     })
 
     setSyncItems(Object.values(grouped).sort((a, b) => a.food_name.localeCompare(b.food_name)))
@@ -331,6 +333,9 @@ export default function EinkaufslistePage() {
                     </span>
                     <div className="flex items-center gap-2 ml-3 shrink-0">
                       <span className="text-sm font-medium" style={{ color: '#64748b' }}>{formatAmount(item.total, item.unit)}</span>
+                      {item.cost_total > 0 && (
+                        <span className="text-xs" style={{ color: '#94a3b8' }}>≈ CHF {item.cost_total.toFixed(2)}</span>
+                      )}
                       <button
                         onClick={() => toggleOwned(i)}
                         className="text-xs font-medium px-2 py-0.5 rounded-lg transition-colors"

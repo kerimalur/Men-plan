@@ -35,8 +35,30 @@ const SLOT_LABELS: Record<string, string> = {
 function defaultSlot(mealType: string): string {
   if (mealType === 'fruehstueck') return 'fruehstueck'
   if (mealType === 'snack') return 'snack'
-  if (mealType === 'abendessen') return 'abendessen'
-  return 'mittagessen' // hauptmahlzeit + mittagessen → mittagessen
+  return 'mittagessen' // hauptmahlzeit → mittagessen
+}
+
+/** Returns the allowed day-slots for a given template type */
+function slotsForTemplateType(mealType: string): Array<{ value: string; label: string }> {
+  if (mealType === 'fruehstueck') {
+    return [
+      { value: 'fruehstueck', label: 'Frühstück' },
+      { value: 'snack',       label: 'Snack' },
+    ]
+  }
+  if (mealType === 'hauptmahlzeit' || mealType === 'mittagessen' || mealType === 'abendessen') {
+    return [
+      { value: 'mittagessen', label: 'Mittagessen' },
+      { value: 'abendessen',  label: 'Abendessen' },
+    ]
+  }
+  // snack → all slots
+  return [
+    { value: 'fruehstueck', label: 'Frühstück' },
+    { value: 'mittagessen', label: 'Mittagessen' },
+    { value: 'abendessen',  label: 'Abendessen' },
+    { value: 'snack',       label: 'Snack' },
+  ]
 }
 
 export default function LoadTemplateModal({ dateStr, onClose, onLoaded }: {
@@ -215,8 +237,8 @@ export default function LoadTemplateModal({ dateStr, onClose, onLoaded }: {
                           onChange={e => setMealSlots(prev => ({ ...prev, [tmpl.id]: e.target.value }))}
                           className="text-xs rounded-lg px-2 py-1 outline-none"
                           style={{ border: '1px solid #e2e8f0', color: '#475569', background: 'white' }}>
-                          {Object.entries(SLOT_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v}</option>
+                          {slotsForTemplateType(tmpl.meal_type).map(({ value, label }) => (
+                            <option key={value} value={value}>{label}</option>
                           ))}
                         </select>
                       </div>

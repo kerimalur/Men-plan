@@ -98,11 +98,23 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
 
   // Load templates for this meal type
   useEffect(() => {
-    const isMain = mealType === 'mittagessen' || mealType === 'abendessen'
+    // Template loading rules:
+    // fruehstueck slot  → fruehstueck + snack templates
+    // mittagessen/abendessen slot → hauptmahlzeit + snack templates
+    // snack slot → snack + fruehstueck templates
+    let typesForSlot: string[]
+    if (mealType === 'mittagessen' || mealType === 'abendessen' || mealType === 'hauptmahlzeit') {
+      typesForSlot = ['hauptmahlzeit', 'snack']
+    } else if (mealType === 'snack') {
+      typesForSlot = ['snack', 'fruehstueck']
+    } else {
+      // fruehstueck
+      typesForSlot = ['fruehstueck', 'snack']
+    }
     supabase
       .from('meal_templates')
       .select('*, meal_template_items(*, foods(*))')
-      .in('meal_type', isMain ? ['hauptmahlzeit', 'mittagessen', 'abendessen'] : [mealType])
+      .in('meal_type', typesForSlot)
       .order('name')
       .then(({ data }) => setTemplates(data || []))
   }, [mealType])
