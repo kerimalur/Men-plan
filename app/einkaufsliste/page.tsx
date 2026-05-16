@@ -359,6 +359,21 @@ export default function EinkaufslistePage() {
                   </div>
                 ))}
               </div>
+              {/* Total price */}
+              {(() => {
+                const totalCost = syncItems
+                  .filter((_, i) => !ownedItems.has(i))
+                  .reduce((sum, item) => sum + item.cost_total, 0)
+                return totalCost > 0 ? (
+                  <div
+                    className="flex items-center justify-between px-4 py-2.5 mb-3 rounded-xl"
+                    style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}
+                  >
+                    <span className="text-sm font-semibold" style={{ color: '#1e293b' }}>Geschätzter Gesamtpreis</span>
+                    <span className="text-sm font-bold" style={{ color: '#059669' }}>≈ CHF {totalCost.toFixed(2)}</span>
+                  </div>
+                ) : null
+              })()}
               <button
                 onClick={addAllToList}
                 className="w-full text-white py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
