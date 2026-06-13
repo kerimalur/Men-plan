@@ -19,6 +19,7 @@ interface Template {
   id: string
   name: string
   meal_type: string
+  category?: string | null
   meal_template_items: TemplateItem[]
 }
 
@@ -27,11 +28,14 @@ interface EditItem {
   food_id: string; food_name: string; amount: number; unit: string
 }
 
+interface TemplateCategory { id: string; name: string }
+
 // ── Template Edit Modal ───────────────────────────────────────
-function TemplateEditModal({ template, onClose, onSaved }: {
-  template: Template; onClose: () => void; onSaved: () => void
+function TemplateEditModal({ template, onClose, onSaved, templateCategories }: {
+  template: Template; onClose: () => void; onSaved: () => void; templateCategories: TemplateCategory[]
 }) {
   const [name, setName] = useState(template.name)
+  const [category, setCategory] = useState(template.category || '')
   const [items, setItems] = useState<EditItem[]>(
     template.meal_template_items.map(ti => ({
       localId: ti.id,
@@ -85,7 +89,7 @@ function TemplateEditModal({ template, onClose, onSaved }: {
   async function save() {
     if (!name.trim()) return
     setSaving(true)
-    await supabase.from('meal_templates').update({ name: name.trim() }).eq('id', template.id)
+    await supabase.from('meal_templates').update({ name: name.trim(), category: category.trim() || null }).eq('id', template.id)
     await supabase.from('meal_template_items').delete().eq('template_id', template.id)
     if (items.length > 0) {
       await supabase.from('meal_template_items').insert(
@@ -118,6 +122,13 @@ function TemplateEditModal({ template, onClose, onSaved }: {
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Name</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kategorie (optional)</label>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={{ ...inputStyle }}>
+              <option value="">Keine Kategorie</option>
+              {templateCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
           </div>
           <div className="text-xs" style={{ color: '#94a3b8' }}>
             Typ: <span style={{ color: '#64748b', fontWeight: 600 }}>{MEAL_TYPE_LABELS[template.meal_type]}</span>
@@ -221,9 +232,10 @@ function TemplateEditModal({ template, onClose, onSaved }: {
 }
 
 // ── Template Create Modal ─────────────────────────────────────
-function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function TemplateCreateModal({ onClose, onSaved, templateCategories }: { onClose: () => void; onSaved: () => void; templateCategories: TemplateCategory[] }) {
   const [name, setName] = useState('')
   const [mealType, setMealType] = useState('hauptmahlzeit')
+  const [category, setCategory] = useState('')
   const [items, setItems] = useState<EditItem[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Food[]>([])
@@ -269,7 +281,7 @@ function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
   async function save() {
     if (!name.trim() || items.length === 0) return
     setSaving(true)
-    const { data: tmpl } = await supabase.from('meal_templates').insert({ name: name.trim(), meal_type: mealType }).select().single()
+    const { data: tmpl } = await supabase.from('meal_templates').insert({ name: name.trim(), meal_type: mealType, category: category.trim() || null }).select().single()
     if (tmpl) {
       await supabase.from('meal_template_items').insert(
         items.map(item => ({ template_id: tmpl.id, food_id: item.food_id, amount: item.amount, unit: item.unit }))
@@ -301,6 +313,13 @@ function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Name</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="z.B. Porridge mit Beeren" style={inputStyle} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kategorie (optional)</label>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={{ ...inputStyle }}>
+              <option value="">Keine Kategorie</option>
+              {templateCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Typ</label>
@@ -389,12 +408,13 @@ function TemplateCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
 }
 
 // ── Template Duplicate Modal ──────────────────────────────────
-function TemplateDuplicateModal({ template, onClose, onSaved }: {
-  template: Template; onClose: () => void; onSaved: () => void
+function TemplateDuplicateModal({ template, onClose, onSaved, templateCategories }: {
+  template: Template; onClose: () => void; onSaved: () => void; templateCategories: TemplateCategory[]
 }) {
   const dupeType = (template.meal_type === 'mittagessen' || template.meal_type === 'abendessen') ? 'hauptmahlzeit' : template.meal_type
   const [name, setName] = useState(template.name + ' (Kopie)')
   const [mealType, setMealType] = useState(dupeType)
+  const [category, setCategory] = useState(template.category || '')
   const [saving, setSaving] = useState(false)
 
   const inputStyle: React.CSSProperties = {
@@ -411,7 +431,7 @@ function TemplateDuplicateModal({ template, onClose, onSaved }: {
     setSaving(true)
     const { data: tmpl } = await supabase
       .from('meal_templates')
-      .insert({ name: name.trim(), meal_type: mealType })
+      .insert({ name: name.trim(), meal_type: mealType, category: category.trim() || null })
       .select()
       .single()
     if (tmpl && template.meal_template_items.length > 0) {
@@ -442,6 +462,13 @@ function TemplateDuplicateModal({ template, onClose, onSaved }: {
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Name der Kopie</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kategorie (optional)</label>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={inputStyle}>
+              <option value="">Keine Kategorie</option>
+              {templateCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Mahlzeit-Typ</label>
@@ -481,11 +508,15 @@ interface PlanTemplate {
 export default function VorlagenPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [planTemplates, setPlanTemplates] = useState<PlanTemplate[]>([])
+  const [templateCategories, setTemplateCategories] = useState<TemplateCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const [duplicatingTemplate, setDuplicatingTemplate] = useState<Template | null>(null)
   const [creatingTemplate, setCreatingTemplate] = useState(false)
   const [activeTab, setActiveTab] = useState<'meal' | 'day' | 'week'>('meal')
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [newCatName, setNewCatName] = useState('')
+  const [savingCat, setSavingCat] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -497,6 +528,8 @@ export default function VorlagenPage() {
     ])
     setTemplates((mealRes.data as Template[]) || [])
     setPlanTemplates((planRes.data as PlanTemplate[]) || [])
+    const { data: cats } = await supabase.from('template_categories').select('id, name').order('name')
+    setTemplateCategories((cats as TemplateCategory[]) || [])
     setLoading(false)
   }
 
@@ -512,12 +545,35 @@ export default function VorlagenPage() {
     await load()
   }
 
-  const grouped = MEAL_TYPE_ORDER.reduce<Record<string, Template[]>>((acc, type) => {
-    if (type === 'hauptmahlzeit') {
-      acc[type] = templates.filter(t => t.meal_type === 'hauptmahlzeit' || t.meal_type === 'mittagessen' || t.meal_type === 'abendessen')
-    } else {
-      acc[type] = templates.filter(t => t.meal_type === type)
-    }
+  async function addCategory() {
+    if (!newCatName.trim()) return
+    setSavingCat(true)
+    await supabase.from('template_categories').insert({ name: newCatName.trim() })
+    setNewCatName('')
+    setSavingCat(false)
+    const { data: cats } = await supabase.from('template_categories').select('id, name').order('name')
+    setTemplateCategories((cats as TemplateCategory[]) || [])
+  }
+
+  async function deleteCategory(id: string) {
+    if (!confirm('Kategorie wirklich löschen?')) return
+    // Remove category from templates that use it
+    const cat = templateCategories.find(c => c.id === id)
+    if (cat) await supabase.from('meal_templates').update({ category: null }).eq('category', cat.name)
+    await supabase.from('template_categories').delete().eq('id', id)
+    if (activeCategory === cat?.name) setActiveCategory(null)
+    const { data: cats } = await supabase.from('template_categories').select('id, name').order('name')
+    setTemplateCategories((cats as TemplateCategory[]) || [])
+    await load()
+  }
+
+  // Filter templates by active category
+  const visibleTemplates = activeCategory
+    ? templates.filter(t => t.category === activeCategory)
+    : templates
+
+  const grouped = (['fruehstueck', 'hauptmahlzeit', 'snack'] as const).reduce<Record<string, Template[]>>((acc, type) => {
+    acc[type] = visibleTemplates.filter(t => t.meal_type === type)
     return acc
   }, {})
 
@@ -550,7 +606,7 @@ export default function VorlagenPage() {
           { key: 'day' as const, label: 'Tagespläne', count: dayPlanTemplates.length },
           { key: 'week' as const, label: 'Wochenpläne', count: weekPlanTemplates.length },
         ]).map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+          <button key={tab.key} onClick={() => { setActiveTab(tab.key); setActiveCategory(null) }}
             className="flex-1 py-2 text-xs rounded-lg font-semibold transition-all"
             style={activeTab === tab.key ? { background: 'white', color: '#1e293b', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } : { color: '#94a3b8' }}>
             {tab.label} ({tab.count})
@@ -558,26 +614,54 @@ export default function VorlagenPage() {
         ))}
       </div>
 
+      {/* Category filter pills (meal tab only) */}
+      {!loading && activeTab === 'meal' && templateCategories.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <button
+            onClick={() => setActiveCategory(null)}
+            className="text-xs px-3 py-1 rounded-full font-medium transition-all"
+            style={activeCategory === null
+              ? { background: '#475569', color: 'white' }
+              : { background: '#f1f5f9', color: '#64748b' }}
+          >
+            Alle
+          </button>
+          {templateCategories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.name === activeCategory ? null : cat.name)}
+              className="text-xs px-3 py-1 rounded-full font-medium transition-all"
+              style={activeCategory === cat.name
+                ? { background: '#475569', color: 'white' }
+                : { background: '#f1f5f9', color: '#64748b' }}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && <div className="text-center py-10 text-sm" style={{ color: '#64748b' }}>Laden…</div>}
 
       {/* Meal templates tab */}
       {!loading && activeTab === 'meal' && (
         <>
-          {templates.length === 0 && (
+          {visibleTemplates.length === 0 && (
             <div className="p-10 text-center text-sm rounded-2xl"
               style={{ background: 'white', border: '1px solid #f1f5f9', color: '#94a3b8', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              Noch keine Mahlzeit-Vorlagen vorhanden.<br />
+              {activeCategory ? `Keine Vorlagen in Kategorie „${activeCategory}".` : 'Noch keine Mahlzeit-Vorlagen vorhanden.'}<br />
               <span className="text-xs">Beim Hinzufügen einer Mahlzeit kannst du sie als Vorlage speichern.</span>
             </div>
           )}
 
-          {MEAL_TYPE_ORDER.map(type => {
-        const list = grouped[type]
+          {(['fruehstueck', 'hauptmahlzeit', 'snack'] as const).map(type => {
+        const list = grouped[type] ?? []
         if (!list.length) return null
+        const sectionLabel = type === 'fruehstueck' ? 'Frühstück' : type === 'hauptmahlzeit' ? 'Hauptmahlzeit' : 'Snack'
         return (
           <div key={type} className="mb-6">
             <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94a3b8' }}>
-              {MEAL_TYPE_LABELS[type]}
+              {sectionLabel}
             </h2>
             <div className="space-y-3">
               {list.map(template => {
@@ -592,8 +676,20 @@ export default function VorlagenPage() {
                     style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
                   >
                     <div className="flex items-start justify-between mb-3">
-                      <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{template.name}</span>
-                      <div className="flex gap-3 ml-4">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{template.name}</span>
+                        {template.category && (
+                          <span
+                            className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full cursor-pointer"
+                            style={{ background: '#f1f5f9', color: '#64748b' }}
+                            onClick={() => setActiveCategory(template.category ?? null)}
+                            title={`Kategorie: ${template.category}`}
+                          >
+                            {template.category}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-3 ml-4 shrink-0">
                         <button
                           onClick={() => setEditingTemplate(template)}
                           className="text-xs transition-colors"
@@ -742,18 +838,24 @@ export default function VorlagenPage() {
                         className="text-xs transition-colors" style={{ color: '#dc2626' }}>Löschen</button>
                     </div>
                     <div className="space-y-2 mb-3">
-                      {sortedDays.map(day => (
-                        <div key={day.id}>
-                          <p className="text-xs font-bold mb-0.5" style={{ color: '#475569' }}>{dayNames[day.day_offset] || `Tag ${day.day_offset + 1}`}</p>
-                          <div className="flex flex-wrap gap-1">
-                            {(day.plan_template_meals || []).map(m => (
-                              <span key={m.id} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#f1f5f9', color: '#64748b' }}>
-                                {m.name}
-                              </span>
-                            ))}
+                      {sortedDays.map(day => {
+                        const TEMPLATE_MEAL_ORDER = ['fruehstueck', 'hauptmahlzeit', 'mittagessen', 'abendessen', 'snack']
+                        const sortedMeals = [...(day.plan_template_meals || [])].sort(
+                          (a, b) => TEMPLATE_MEAL_ORDER.indexOf(a.meal_type) - TEMPLATE_MEAL_ORDER.indexOf(b.meal_type)
+                        )
+                        return (
+                          <div key={day.id}>
+                            <p className="text-xs font-bold mb-0.5" style={{ color: '#475569' }}>{dayNames[day.day_offset] || `Tag ${day.day_offset + 1}`}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {sortedMeals.map(m => (
+                                <span key={m.id} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#f1f5f9', color: '#64748b' }}>
+                                  {m.name}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                     <div className="pt-2.5 flex gap-4 text-xs font-medium" style={{ borderTop: '1px solid #f1f5f9', color: '#64748b' }}>
                       <span>{Math.round(totalKcal)} kcal</span>
@@ -774,6 +876,7 @@ export default function VorlagenPage() {
           template={editingTemplate}
           onClose={() => setEditingTemplate(null)}
           onSaved={() => { setEditingTemplate(null); load() }}
+          templateCategories={templateCategories}
         />
       )}
 
@@ -782,6 +885,7 @@ export default function VorlagenPage() {
           template={duplicatingTemplate}
           onClose={() => setDuplicatingTemplate(null)}
           onSaved={() => { setDuplicatingTemplate(null); load() }}
+          templateCategories={templateCategories}
         />
       )}
 
@@ -789,7 +893,45 @@ export default function VorlagenPage() {
         <TemplateCreateModal
           onClose={() => setCreatingTemplate(false)}
           onSaved={() => { setCreatingTemplate(false); load() }}
+          templateCategories={templateCategories}
         />
+      )}
+
+      {/* ── Vorlagenkategorien Verwaltung ─────────────────── */}
+      {!loading && activeTab === 'meal' && (
+        <div className="mt-8 pt-6" style={{ borderTop: '2px solid #f1f5f9' }}>
+          <h2 className="text-sm font-semibold mb-3" style={{ color: '#1e293b' }}>Vorlagenkategorien</h2>
+          <div className="rounded-2xl overflow-hidden mb-3"
+            style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            {templateCategories.length === 0 && (
+              <p className="text-xs px-4 py-3" style={{ color: '#94a3b8' }}>Noch keine Kategorien vorhanden.</p>
+            )}
+            {templateCategories.map((cat, i) => (
+              <div key={cat.id} className="flex items-center justify-between px-4 py-2.5"
+                style={i > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}>
+                <span className="text-sm" style={{ color: '#1e293b' }}>{cat.name}</span>
+                <button onClick={() => deleteCategory(cat.id)}
+                  className="text-xs transition-colors" style={{ color: '#dc2626' }}>Löschen</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newCatName}
+              onChange={e => setNewCatName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addCategory()}
+              placeholder="Neue Kategorie…"
+              className="flex-1 text-sm rounded-xl px-3 py-2 outline-none"
+              style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+            />
+            <button onClick={addCategory} disabled={!newCatName.trim() || savingCat}
+              className="text-white px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
+              style={{ background: '#475569' }}>
+              {savingCat ? '…' : '+ Hinzufügen'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -193,8 +193,9 @@ export default function TagPage() {
 
   const totals = sumItems(meals.map(m => ({ kcal: m.kcal_total, protein: m.protein_total, cost: m.cost_total })))
 
-  const mealTypesPresent = new Set(meals.map(m => m.meal_type))
-  const isDayComplete = MEAL_TYPE_ORDER.every(t => mealTypesPresent.has(t))
+  // Normalise legacy 'hauptmahlzeit' → 'mittagessen' for completion check
+  const mealTypesNormalized = new Set(meals.map(m => m.meal_type === 'hauptmahlzeit' ? 'mittagessen' : m.meal_type))
+  const isDayComplete = MEAL_TYPE_ORDER.every(t => mealTypesNormalized.has(t))
 
   async function saveDayAsTemplate(name: string) {
     if (!name.trim() || !plan) return
@@ -461,7 +462,10 @@ export default function TagPage() {
           <div className="space-y-3">
             {MEAL_TYPE_ORDER.map(key => {
               const { label, color, bg, border } = MEAL_TYPE_META[key]
-              const sectionMeals = meals.filter(m => m.meal_type === key)
+              // Include legacy 'hauptmahlzeit' meals under the 'mittagessen' section
+              const sectionMeals = meals.filter(m =>
+                m.meal_type === key || (key === 'mittagessen' && m.meal_type === 'hauptmahlzeit')
+              )
               if (hideEmpty && sectionMeals.length === 0) return null
               return (
                 <div key={key} className="rounded-2xl overflow-hidden"
