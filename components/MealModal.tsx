@@ -31,6 +31,7 @@ interface Item {
   isCustom?: boolean
   customKcalPer100?: number
   customProteinPer100?: number
+  isQuick?: boolean
 }
 
 interface Template {
@@ -62,8 +63,8 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
   const [mealName, setMealName] = useState('')
   const [items, setItems] = useState<Item[]>([])
 
-  // Mode: 'search' for DB foods, 'custom' for manual entry
-  const [addMode, setAddMode] = useState<'search' | 'custom'>('search')
+  // Mode: 'search' for DB foods, 'custom' for manual entry, 'quick' for kcal/protein/price only
+  const [addMode, setAddMode] = useState<'search' | 'custom' | 'quick'>('search')
 
   // Food search
   const [searchQuery, setSearchQuery] = useState('')
@@ -87,6 +88,11 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
   const [customProtein, setCustomProtein] = useState('')
   const [customAmount, setCustomAmount] = useState('')
   const [customUnit, setCustomUnit] = useState('g')
+
+  // Quick entry fields (only kcal/protein/price for the whole meal)
+  const [quickKcal, setQuickKcal] = useState('')
+  const [quickProtein, setQuickProtein] = useState('')
+  const [quickCost, setQuickCost] = useState('')
 
   // Save-to-DB prompt
   const [showSavePrompt, setShowSavePrompt] = useState(false)
@@ -179,6 +185,21 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
       customProteinPer100: protPer100,
     }])
     setCustomName(''); setCustomKcal(''); setCustomProtein(''); setCustomAmount('')
+  }
+
+  function addQuickItem() {
+    if (!quickKcal) return
+    setItems(prev => [...prev, {
+      food_id:   null,
+      food_name: mealName.trim() || 'Direkteingabe',
+      amount:    1,
+      unit:      'stk',
+      kcal:      parseFloat(quickKcal) || 0,
+      protein:   parseFloat(quickProtein) || 0,
+      cost:      parseFloat(quickCost) || 0,
+      isQuick:   true,
+    }])
+    setQuickKcal(''); setQuickProtein(''); setQuickCost('')
   }
 
   function handleFinishSave() {
@@ -372,6 +393,15 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
               >
                 Eigenes Lebensmittel
               </button>
+              <button
+                onClick={() => setAddMode('quick')}
+                className="text-xs font-medium px-3 py-1 rounded-lg transition-colors"
+                style={addMode === 'quick'
+                  ? { background: '#475569', color: 'white' }
+                  : { background: '#f1f5f9', color: '#64748b' }}
+              >
+                Schnelleingabe
+              </button>
             </div>
 
             {addMode === 'search' ? (
@@ -458,7 +488,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                   </div>
                 )}
               </>
-            ) : (
+            ) : addMode === 'custom' ? (
               <>
                 {/* Custom food form */}
                 <input
@@ -519,6 +549,51 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                   Eigene Lebensmittel werden getrackt. Beim Speichern kannst du sie optional in die Datenbank aufnehmen.
                 </p>
               </>
+            ) : (
+              <>
+                {/* Quick entry: just kcal/protein/price for the whole meal */}
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="number"
+                    value={quickKcal}
+                    onChange={e => setQuickKcal(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addQuickItem()}
+                    placeholder="kcal"
+                    min="0"
+                    style={inputStyle}
+                  />
+                  <input
+                    type="number"
+                    value={quickProtein}
+                    onChange={e => setQuickProtein(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addQuickItem()}
+                    placeholder="Protein g"
+                    min="0"
+                    style={inputStyle}
+                  />
+                  <input
+                    type="number"
+                    value={quickCost}
+                    onChange={e => setQuickCost(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addQuickItem()}
+                    placeholder="CHF"
+                    min="0"
+                    step="0.01"
+                    style={inputStyle}
+                  />
+                </div>
+                <button
+                  onClick={addQuickItem}
+                  disabled={!quickKcal}
+                  className="w-full text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
+                  style={{ background: '#475569' }}
+                >
+                  Hinzufügen
+                </button>
+                <p className="text-xs" style={{ color: '#94a3b8' }}>
+                  Nur Kalorien, Protein und ungefährer Preis für die ganze Mahlzeit – ohne einzelne Lebensmittel.
+                </p>
+              </>
             )}
           </div>
 
@@ -541,7 +616,12 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                       {item.isCustom && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ background: '#fef3c7', color: '#92400e' }}>eigen</span>
                       )}
-                      <span className="text-xs shrink-0" style={{ color: '#64748b' }}>{item.amount}{item.unit}</span>
+                      {item.isQuick && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ background: '#e0e7ff', color: '#4338ca' }}>schnell</span>
+                      )}
+                      {!item.isQuick && (
+                        <span className="text-xs shrink-0" style={{ color: '#64748b' }}>{item.amount}{item.unit}</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 shrink-0 ml-3">
                       <span className="text-xs" style={{ color: '#94a3b8' }}>{item.kcal} kcal</span>

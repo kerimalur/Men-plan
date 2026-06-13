@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 interface Food {
@@ -189,6 +190,9 @@ export default function DatenbankPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
+      <Link href="/einstellungen" className="text-xs font-medium inline-flex items-center gap-1 mb-3" style={{ color: '#64748b' }}>
+        ← Einstellungen
+      </Link>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Lebensmittel-Datenbank</h1>
         <div className="flex gap-2">

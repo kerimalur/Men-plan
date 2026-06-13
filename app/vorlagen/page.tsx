@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { calcNutrition, sumItems } from '@/lib/calculations'
 import { MEAL_TYPE_LABELS, MEAL_TYPE_ORDER } from '@/lib/mealTypes'
@@ -525,6 +526,9 @@ export default function VorlagenPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      <Link href="/einstellungen" className="text-xs font-medium inline-flex items-center gap-1 mb-3" style={{ color: '#64748b' }}>
+        ← Einstellungen
+      </Link>
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Vorlagen</h1>

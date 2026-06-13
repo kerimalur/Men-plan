@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { loadSettings, saveSetting } from '@/lib/settings'
 import { supabase } from '@/lib/supabase'
 import { MEAL_TYPE_LABELS } from '@/lib/mealTypes'
@@ -129,6 +130,39 @@ export default function EinstellungenPage() {
         <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
           Ziele für Kalorien, Protein und Kosten — steuern die Farbanzeigen im Dashboard und Kalender.
         </p>
+      </div>
+
+      {/* Verwaltung */}
+      <div
+        className="rounded-2xl overflow-hidden mb-5"
+        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
+      >
+        <div
+          className="px-5 py-3.5"
+          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
+        >
+          <h2 className="text-sm font-semibold" style={{ color: '#1e293b' }}>Verwaltung</h2>
+        </div>
+        <div>
+          <Link href="/datenbank"
+            className="px-5 py-4 flex items-center justify-between transition-colors"
+            style={{ color: '#1e293b' }}>
+            <div>
+              <span className="text-sm font-medium">Lebensmittel-Datenbank</span>
+              <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Lebensmittel verwalten</p>
+            </div>
+            <span style={{ color: '#cbd5e1' }}>›</span>
+          </Link>
+          <Link href="/vorlagen"
+            className="px-5 py-4 flex items-center justify-between transition-colors"
+            style={{ borderTop: '1px solid #f1f5f9', color: '#1e293b' }}>
+            <div>
+              <span className="text-sm font-medium">Vorlagen</span>
+              <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Mahlzeit- und Tagesvorlagen verwalten</p>
+            </div>
+            <span style={{ color: '#cbd5e1' }}>›</span>
+          </Link>
+        </div>
       </div>
 
       {/* Goal section */}
