@@ -12,6 +12,8 @@ interface Food {
   cost_per_100: number
   unit: 'g' | 'ml' | 'stk'
   category_id: string | null
+  calories_per_100g?: number | null
+  protein_per_100g?: number | null
 }
 
 interface Category {
@@ -25,6 +27,8 @@ interface FoodForm {
   protein_per_100: string
   cost_per_100: string
   unit: 'g' | 'ml' | 'stk'
+  calories_per_100g: string
+  protein_per_100g: string
 }
 
 interface ImportRow {
@@ -38,6 +42,7 @@ interface ImportRow {
 
 const emptyForm: FoodForm = {
   name: '', calories_per_100: '', protein_per_100: '', cost_per_100: '', unit: 'g',
+  calories_per_100g: '', protein_per_100g: '',
 }
 
 function parseImportText(text: string): ImportRow[] {
@@ -114,6 +119,8 @@ export default function DatenbankPage() {
       protein_per_100:  String(food.protein_per_100),
       cost_per_100:     String(food.cost_per_100),
       unit:             food.unit as 'g' | 'ml' | 'stk',
+      calories_per_100g: food.calories_per_100g != null ? String(food.calories_per_100g) : '',
+      protein_per_100g:  food.protein_per_100g != null ? String(food.protein_per_100g) : '',
     })
     setShowModal(true)
   }
@@ -121,12 +128,14 @@ export default function DatenbankPage() {
   async function save() {
     if (!form.name || form.calories_per_100 === '') return
     setSaving(true)
-    const data = {
+    const data: Record<string, unknown> = {
       name:             form.name.trim(),
       calories_per_100: parseFloat(form.calories_per_100),
       protein_per_100:  parseFloat(form.protein_per_100) || 0,
       cost_per_100:     parseFloat(form.cost_per_100) || 0,
       unit:             form.unit,
+      calories_per_100g: form.unit === 'stk' && form.calories_per_100g ? parseFloat(form.calories_per_100g) : null,
+      protein_per_100g:  form.unit === 'stk' && form.protein_per_100g ? parseFloat(form.protein_per_100g) : null,
     }
     if (editing) {
       await supabase.from('foods').update(data).eq('id', editing.id)
@@ -320,7 +329,12 @@ export default function DatenbankPage() {
                 <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{food.calories_per_100}</td>
                 <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{food.protein_per_100}g</td>
                 <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{Number(food.cost_per_100).toFixed(2)}</td>
-                <td className="px-4 py-3 text-right text-xs" style={{ color: '#94a3b8' }}>{food.unit === 'stk' ? '1 Stk.' : `100${food.unit}`}</td>
+                <td className="px-4 py-3 text-right text-xs" style={{ color: '#94a3b8' }}>
+                  {food.unit === 'stk' ? '1 Stk.' : `100${food.unit}`}
+                  {food.unit === 'stk' && food.calories_per_100g != null && (
+                    <span className="ml-1" style={{ color: '#059669' }}>+g</span>
+                  )}
+                </td>
                 {categories.length > 0 && (
                   <td className="px-4 py-3">
                     <select
@@ -399,6 +413,29 @@ export default function DatenbankPage() {
                   </div>
                 ))}
               </div>
+              {form.unit === 'stk' && (
+                <div className="rounded-lg p-3" style={{ background: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                  <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>
+                    Optional: Nährwerte pro 100g (für Eingabe nach Gewicht)
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>kcal / 100g</label>
+                      <input type="number" value={form.calories_per_100g} onChange={e => f(e.target.value, 'calories_per_100g')}
+                        placeholder="0" min="0" step="1"
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Protein / 100g</label>
+                      <input type="number" value={form.protein_per_100g} onChange={e => f(e.target.value, 'protein_per_100g')}
+                        placeholder="0" min="0" step="0.1"
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="px-6 py-4 flex justify-end gap-2" style={{ borderTop: '1px solid #f1f5f9' }}>
               <button

@@ -18,6 +18,8 @@ interface Food {
   protein_per_100: number
   cost_per_100: number
   unit: 'g' | 'ml' | 'stk'
+  calories_per_100g?: number | null
+  protein_per_100g?: number | null
 }
 
 interface Item {
@@ -159,14 +161,23 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
     setAmount('')
   }
 
+  function effectiveFood(food: Food, selectedUnit: string): { calories_per_100: number; protein_per_100: number; cost_per_100: number } {
+    if (selectedUnit === 'g' && food.unit === 'stk' && food.calories_per_100g != null) {
+      return { calories_per_100: food.calories_per_100g, protein_per_100: food.protein_per_100g || 0, cost_per_100: 0 }
+    }
+    return food
+  }
+
   function addItem() {
     if (!selectedFood || !amount) return
-    const n = calcNutrition(selectedFood, parseFloat(amount), unit)
+    const ef = effectiveFood(selectedFood, unit)
+    const calcUnit = (unit === 'g' && selectedFood.unit === 'stk') ? 'g' : unit
+    const n = calcNutrition(ef, parseFloat(amount), calcUnit)
     setItems(prev => [...prev, {
       food_id:   selectedFood.id,
       food_name: selectedFood.name,
       amount:    parseFloat(amount),
-      unit,
+      unit:      calcUnit,
       kcal:      n.kcal,
       protein:   n.protein,
       cost:      n.cost,
@@ -311,7 +322,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
   const totals = sumItems(items)
 
   const preview = selectedFood && amount
-    ? calcNutrition(selectedFood, parseFloat(amount) || 0, unit)
+    ? calcNutrition(effectiveFood(selectedFood, unit), parseFloat(amount) || 0, (unit === 'g' && selectedFood.unit === 'stk') ? 'g' : unit)
     : null
 
   const inputStyle: React.CSSProperties = {
@@ -469,6 +480,9 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                           <span className="font-medium">{food.name}</span>
                           <span className="text-xs ml-2" style={{ color: '#64748b' }}>
                             {food.calories_per_100} kcal · {food.protein_per_100}g P · CHF {Number(food.cost_per_100).toFixed(2)}{food.unit === 'stk' ? '/Stück' : `/100${food.unit}`}
+                            {food.unit === 'stk' && food.calories_per_100g != null && (
+                              <span style={{ color: '#059669' }}> · auch in g</span>
+                            )}
                           </span>
                         </li>
                       ))}
@@ -500,7 +514,12 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
                         <option value="l">l</option>
                       </>
                     ) : selectedFood?.unit === 'stk' ? (
-                      <option value="stk">Stk.</option>
+                      <>
+                        <option value="stk">Stk.</option>
+                        {selectedFood.calories_per_100g != null && (
+                          <option value="g">g</option>
+                        )}
+                      </>
                     ) : (
                       <option value="g">g</option>
                     )}

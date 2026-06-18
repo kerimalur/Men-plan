@@ -10,6 +10,8 @@ interface Food {
   protein_per_100: number
   cost_per_100: number
   unit: 'g' | 'ml' | 'stk'
+  calories_per_100g?: number | null
+  protein_per_100g?: number | null
 }
 
 interface FoodSearchProps {
@@ -149,6 +151,9 @@ export default function FoodSearch({ onSelect, placeholder = 'Lebensmittel suche
               <span className="text-xs ml-2" style={{ color: '#64748b' }}>
                 {food.calories_per_100} kcal · {food.protein_per_100}g P · CHF {Number(food.cost_per_100).toFixed(2)}
                 {food.unit === 'stk' ? '/Stück' : `/100${food.unit}`}
+                {food.unit === 'stk' && food.calories_per_100g != null && (
+                  <span style={{ color: '#059669' }}> · auch in g</span>
+                )}
               </span>
             </li>
           ))}

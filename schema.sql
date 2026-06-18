@@ -10,7 +10,9 @@ CREATE TABLE foods (
   calories_per_100 DECIMAL(8,2) NOT NULL DEFAULT 0,
   protein_per_100  DECIMAL(8,2) NOT NULL DEFAULT 0,
   cost_per_100     DECIMAL(8,4) NOT NULL DEFAULT 0,  -- CHF pro 100g oder 100ml
-  unit             TEXT NOT NULL DEFAULT 'g' CHECK (unit IN ('g', 'ml')),
+  unit             TEXT NOT NULL DEFAULT 'g' CHECK (unit IN ('g', 'ml', 'stk')),
+  calories_per_100g DECIMAL(8,2),  -- optional: kcal pro 100g (für Stk-Lebensmittel die auch nach Gewicht eingegeben werden)
+  protein_per_100g  DECIMAL(8,2),  -- optional: Protein pro 100g
   created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -28,7 +30,7 @@ CREATE TABLE meal_template_items (
   template_id UUID REFERENCES meal_templates(id) ON DELETE CASCADE,
   food_id     UUID REFERENCES foods(id) ON DELETE CASCADE,
   amount      DECIMAL(8,2) NOT NULL,
-  unit        TEXT NOT NULL CHECK (unit IN ('g', 'ml', 'dl', 'l')),
+  unit        TEXT NOT NULL CHECK (unit IN ('g', 'ml', 'dl', 'l', 'stk')),
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -61,7 +63,7 @@ CREATE TABLE meal_items (
   food_id   UUID REFERENCES foods(id) ON DELETE SET NULL,
   food_name TEXT NOT NULL,         -- Snapshot des Namens
   amount    DECIMAL(8,2) NOT NULL,
-  unit      TEXT NOT NULL CHECK (unit IN ('g', 'ml', 'dl', 'l')),
+  unit      TEXT NOT NULL CHECK (unit IN ('g', 'ml', 'dl', 'l', 'stk')),
   kcal      DECIMAL(8,2) NOT NULL DEFAULT 0,    -- gespeichert
   protein   DECIMAL(8,2) NOT NULL DEFAULT 0,    -- gespeichert
   cost      DECIMAL(8,4) NOT NULL DEFAULT 0,    -- gespeichert
