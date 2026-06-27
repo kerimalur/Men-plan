@@ -167,6 +167,9 @@ ALTER TABLE foods ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES food_cate
 ALTER TABLE foods ADD COLUMN IF NOT EXISTS calories_per_100g DECIMAL(8,2);
 ALTER TABLE foods ADD COLUMN IF NOT EXISTS protein_per_100g DECIMAL(8,2);
 
+ALTER TABLE meals ADD COLUMN IF NOT EXISTS eaten BOOLEAN DEFAULT FALSE;
+ALTER TABLE meal_templates ADD COLUMN IF NOT EXISTS category TEXT;
+
 -- ============================================================
 -- 3. CHECK-Constraints aktualisieren (drop + create)
 -- ============================================================

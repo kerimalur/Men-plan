@@ -47,6 +47,13 @@ interface Template {
   }>
 }
 
+export interface ExistingMeal {
+  id: string
+  name: string
+  meal_type: string
+  items: { food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }[]
+}
+
 interface Props {
   mealType: string
   onClose: () => void
@@ -58,12 +65,19 @@ interface Props {
     templateName: string
     mealType: string
     customFoods?: Item[]
+    existingMealId?: string
   }) => void
+  existingMeal?: ExistingMeal
 }
 
-export default function MealModal({ mealType, onClose, onSave }: Props) {
-  const [mealName, setMealName] = useState('')
-  const [items, setItems] = useState<Item[]>([])
+export default function MealModal({ mealType, onClose, onSave, existingMeal }: Props) {
+  const [mealName, setMealName] = useState(existingMeal?.name || '')
+  const [items, setItems] = useState<Item[]>(
+    existingMeal?.items.map(i => ({
+      food_id: i.food_id, food_name: i.food_name, amount: i.amount,
+      unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost,
+    })) || []
+  )
 
   // Mode: 'search' for DB foods, 'custom' for manual entry, 'quick' for kcal/protein/price only
   const [addMode, setAddMode] = useState<'search' | 'custom' | 'quick'>('search')
@@ -253,7 +267,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
   function handleFinishSave() {
     if (!mealName || items.length === 0) return
     const customFoods = items.filter(i => i.isCustom)
-    const data = { mealName, items, totals, saveAsTemplate, templateName, mealType, customFoods }
+    const data = { mealName, items, totals, saveAsTemplate, templateName, mealType, customFoods, existingMealId: existingMeal?.id }
     if (customFoods.length > 0) {
       setPendingSaveData(data)
       setShowSavePrompt(true)
@@ -362,7 +376,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
           style={{ borderBottom: '1px solid #f1f5f9' }}
         >
           <h2 className="font-semibold text-sm" style={{ color: '#1e293b' }}>
-            {MEAL_TYPE_LABELS[mealType]} hinzufügen
+            {existingMeal ? `${MEAL_TYPE_LABELS[mealType]} bearbeiten` : `${MEAL_TYPE_LABELS[mealType]} hinzufügen`}
           </h2>
           {templates.length > 0 && (
             <button

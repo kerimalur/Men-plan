@@ -35,7 +35,7 @@ function ArcProgress({ value, max, size = 100, color: colorProp }: { value: numb
   )
 }
 
-interface Meal { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number }
+interface Meal { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number; eaten: boolean }
 interface Plan { kcal_total: number; protein_total: number; cost_total: number }
 interface DayMarker { training: boolean; eingeladen: boolean }
 
@@ -80,6 +80,13 @@ export default function Dashboard() {
     }
     load()
   }, [])
+
+  async function toggleEaten(mealId: string) {
+    const meal = meals.find(m => m.id === mealId)
+    if (!meal) return
+    const { error } = await supabase.from('meals').update({ eaten: !meal.eaten }).eq('id', mealId)
+    if (!error) setMeals(prev => prev.map(m => m.id === mealId ? { ...m, eaten: !m.eaten } : m))
+  }
 
   const kcal    = plan?.kcal_total    || 0
   const protein = plan?.protein_total || 0
@@ -167,12 +174,19 @@ export default function Dashboard() {
                 </span>
                 {meal ? (
                   <>
-                    <span className="text-sm flex-1 truncate font-medium" style={{ color: '#1e293b' }}>{meal.name}</span>
-                    <div className="flex gap-3 shrink-0">
-                      <span className="text-xs font-semibold" style={{ color: limitColor(meal.kcal_total, goals.kcal) }}>
+                    <span className="text-sm flex-1 truncate font-medium" style={{ color: meal.eaten ? '#94a3b8' : '#1e293b', textDecoration: meal.eaten ? 'line-through' : 'none' }}>{meal.name}</span>
+                    <div className="flex gap-3 shrink-0 items-center">
+                      <span className="text-xs font-semibold" style={{ color: meal.eaten ? '#94a3b8' : limitColor(meal.kcal_total, goals.kcal) }}>
                         {Math.round(meal.kcal_total)} kcal
                       </span>
                       <span className="text-xs" style={{ color: '#94a3b8' }}>{meal.protein_total}g P</span>
+                      <button onClick={() => toggleEaten(meal.id)}
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all shrink-0"
+                        style={meal.eaten
+                          ? { background: '#16a34a', color: 'white' }
+                          : { background: '#f1f5f9', color: '#cbd5e1', border: '1.5px solid #e2e8f0' }}>
+                        {meal.eaten ? '✓' : ''}
+                      </button>
                     </div>
                   </>
                 ) : (
