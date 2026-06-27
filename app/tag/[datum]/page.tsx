@@ -13,7 +13,7 @@ import MealModal from '@/components/MealModal'
 import type { ExistingMeal } from '@/components/MealModal'
 
 interface MealItem { id: string; food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }
-interface Meal     { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number; meal_items: MealItem[] }
+interface Meal     { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number; eaten: boolean; meal_items: MealItem[] }
 interface Plan     { id: string; kcal_total: number; protein_total: number; cost_total: number }
 interface WeekPlan { date: string; kcal_total: number; protein_total: number; cost_total: number }
 
@@ -146,6 +146,13 @@ export default function TagPage() {
     await recalc(plan.id, [...meals, { kcal_total: meal.kcal_total, protein_total: meal.protein_total, cost_total: meal.cost_total } as Meal])
     await loadData()
     toast(`"${meal.name}" dupliziert`, 'success')
+  }
+
+  async function toggleEaten(mealId: string) {
+    const meal = meals.find(m => m.id === mealId)
+    if (!meal) return
+    const { error } = await supabase.from('meals').update({ eaten: !meal.eaten }).eq('id', mealId)
+    if (!error) setMeals(prev => prev.map(m => m.id === mealId ? { ...m, eaten: !m.eaten } : m))
   }
 
   async function deleteItem(meal: Meal, itemId: string) {
@@ -488,27 +495,26 @@ export default function TagPage() {
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 py-3.5" style={{ background: bg }}>
                     <span className="text-sm font-bold" style={{ color }}>{label}</span>
-                    <div className="flex gap-1.5">
-                      {sectionMeals.length > 0 && (
-                        <button onClick={() => {
-                          const meal = sectionMeals[0]
-                          setEditingMeal({
-                            id: meal.id, name: meal.name, meal_type: meal.meal_type,
-                            items: meal.meal_items.map(i => ({ food_id: i.food_id, food_name: i.food_name, amount: i.amount, unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost }))
-                          })
-                          setAddingFor(key)
-                        }}
-                          className="text-xs font-bold px-3 py-1 rounded-lg transition-all"
-                          style={{ background: 'white', color, border: `1px solid ${border}` }}>
-                          Bearbeiten
-                        </button>
-                      )}
+                    {sectionMeals.length > 0 ? (
+                      <button onClick={() => {
+                        const meal = sectionMeals[0]
+                        setEditingMeal({
+                          id: meal.id, name: meal.name, meal_type: meal.meal_type,
+                          items: meal.meal_items.map(i => ({ food_id: i.food_id, food_name: i.food_name, amount: i.amount, unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost }))
+                        })
+                        setAddingFor(key)
+                      }}
+                        className="text-xs font-bold px-3 py-1 rounded-lg transition-all"
+                        style={{ background: 'white', color, border: `1px solid ${border}` }}>
+                        Bearbeiten
+                      </button>
+                    ) : (
                       <button onClick={() => { setEditingMeal(null); setAddingFor(key) }}
                         className="text-xs font-bold px-3 py-1 rounded-lg transition-all"
                         style={{ background: 'white', color, border: `1px solid ${border}` }}>
                         + Hinzufügen
                       </button>
-                    </div>
+                    )}
                   </div>
 
                   {/* Content */}
@@ -517,9 +523,18 @@ export default function TagPage() {
                       <p className="px-5 py-3.5 text-xs" style={{ color: '#cbd5e1' }}>Noch nichts geplant</p>
                     )}
                     {sectionMeals.map(meal => (
-                      <div key={meal.id} className="px-5 py-4" style={{ borderBottom: '1px solid #f8fafc' }}>
+                      <div key={meal.id} className="px-5 py-4" style={{ borderBottom: '1px solid #f8fafc', opacity: meal.eaten ? 0.6 : 1 }}>
                         <div className="flex items-center justify-between mb-2.5">
-                          <span className="text-sm font-bold" style={{ color: '#1e293b' }}>{meal.name}</span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <button onClick={() => toggleEaten(meal.id)}
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all shrink-0"
+                              style={meal.eaten
+                                ? { background: '#16a34a', color: 'white' }
+                                : { background: '#f1f5f9', color: '#cbd5e1', border: '1.5px solid #e2e8f0' }}>
+                              {meal.eaten ? '✓' : ''}
+                            </button>
+                            <span className="text-sm font-bold" style={{ color: meal.eaten ? '#94a3b8' : '#1e293b', textDecoration: meal.eaten ? 'line-through' : 'none' }}>{meal.name}</span>
+                          </div>
                           <div className="flex gap-3">
                             <button onClick={() => duplicateMeal(meal)}
                               className="text-xs transition-all" style={{ color: '#4f46e5' }}>Nochmal</button>

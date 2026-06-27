@@ -47,6 +47,41 @@ interface Template {
   }>
 }
 
+function TemplatePicker({ templates, onApply }: { templates: Template[]; onApply: (t: Template) => void }) {
+  const [filter, setFilter] = useState('')
+  const filtered = filter
+    ? templates.filter(t => {
+        const q = filter.toLowerCase()
+        return t.name.toLowerCase().includes(q) || t.meal_template_items?.some(ti => ti.foods?.name?.toLowerCase().includes(q))
+      })
+    : templates
+  return (
+    <div className="px-6 py-3" style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+      <input
+        type="text"
+        value={filter}
+        onChange={e => setFilter(e.target.value)}
+        placeholder="Vorlage suchen…"
+        className="w-full mb-2 text-sm rounded-lg px-3 py-2 outline-none"
+        style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+      />
+      <div className="space-y-1 max-h-48 overflow-y-auto">
+        {filtered.length === 0 && <p className="text-xs py-2 text-center" style={{ color: '#94a3b8' }}>Keine Vorlagen gefunden.</p>}
+        {filtered.map(t => (
+          <button key={t.id} onClick={() => onApply(t)}
+            className="w-full text-left px-3 py-2 text-sm rounded-lg transition-colors"
+            style={{ background: 'transparent', color: '#1e293b' }}
+            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#f1f5f9')}
+            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}>
+            {t.name}
+            <span className="text-xs ml-2" style={{ color: '#64748b' }}>{t.meal_template_items?.length} Zutaten</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export interface ExistingMeal {
   id: string
   name: string
@@ -391,29 +426,7 @@ export default function MealModal({ mealType, onClose, onSave, existingMeal }: P
 
         {/* Template picker */}
         {showTemplates && (
-          <div
-            className="px-6 py-3"
-            style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
-          >
-            <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>Vorlage auswählen</p>
-            <div className="space-y-1">
-              {templates.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => applyTemplate(t)}
-                  className="w-full text-left px-3 py-2 text-sm rounded-lg transition-colors"
-                  style={{ background: 'transparent', color: '#1e293b' }}
-                  onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#f1f5f9')}
-                  onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-                >
-                  {t.name}
-                  <span className="text-xs ml-2" style={{ color: '#64748b' }}>
-                    {t.meal_template_items?.length} Zutaten
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <TemplatePicker templates={templates} onApply={applyTemplate} />
         )}
 
         <div className="p-6 space-y-5">
