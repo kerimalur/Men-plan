@@ -10,8 +10,9 @@ import { MONTH_NAMES, DAY_NAMES, DAY_LONG, toDateStr, getWeekDays } from '@/lib/
 import { MEAL_TYPE_ORDER, MEAL_TYPE_META } from '@/lib/mealTypes'
 import { useToast } from '@/components/Toast'
 import MealModal from '@/components/MealModal'
+import CopyMealModal from '@/components/CopyMealModal'
 
-interface MealItem { id: string; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }
+interface MealItem { id: string; food_id?: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }
 interface Meal     { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number; meal_items: MealItem[] }
 interface Plan     { id: string; kcal_total: number; protein_total: number; cost_total: number }
 interface WeekPlan { date: string; kcal_total: number; protein_total: number; cost_total: number }
@@ -36,6 +37,7 @@ export default function TagPage() {
   const [goals, setGoals]         = useState({ kcal: 2000, protein: 150, kosten: 20 })
   const [editingItemId, setEditingItemId]       = useState<string | null>(null)
   const [editingItemAmount, setEditingItemAmount] = useState('')
+  const [copyingMeal, setCopyingMeal] = useState<Meal | null>(null)
   const [savingTemplate, setSavingTemplate] = useState<'day' | 'week' | null>(null)
   const [templateName, setTemplateName] = useState('')
   const [templateSaving, setTemplateSaving] = useState(false)
@@ -490,6 +492,8 @@ export default function TagPage() {
                         <div className="flex items-center justify-between mb-2.5">
                           <span className="text-sm font-bold" style={{ color: '#1e293b' }}>{meal.name}</span>
                           <div className="flex gap-3">
+                            <button onClick={() => setCopyingMeal(meal)}
+                              className="text-xs transition-all" style={{ color: '#059669' }}>Kopieren</button>
                             <button onClick={() => duplicateMeal(meal)}
                               className="text-xs transition-all" style={{ color: '#4f46e5' }}>Nochmal</button>
                             <button onClick={() => deleteMeal(meal.id)}
@@ -558,6 +562,17 @@ export default function TagPage() {
 
       {addingFor && (
         <MealModal mealType={addingFor} onClose={() => setAddingFor(null)} onSave={handleSave} />
+      )}
+
+      {copyingMeal && (
+        <CopyMealModal
+          meal={copyingMeal}
+          onClose={() => setCopyingMeal(null)}
+          onCopied={(targetDate) => {
+            setCopyingMeal(null)
+            toast(`"${copyingMeal.name}" nach ${new Date(targetDate + 'T12:00:00').toLocaleDateString('de-CH', { day: 'numeric', month: 'short' })} kopiert`, 'success')
+          }}
+        />
       )}
 
       {/* Save Template Modal */}

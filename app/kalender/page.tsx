@@ -12,6 +12,7 @@ import DayPopup from '@/components/DayPopup'
 import SaveDayTemplateModal from '@/components/SaveDayTemplateModal'
 import LoadTemplateModal from '@/components/LoadTemplateModal'
 import CopyDayModal from '@/components/CopyDayModal'
+import DistributeMenuModal from '@/components/DistributeMenuModal'
 
 interface Plan   { date: string; kcal_total: number; protein_total: number; cost_total: number; meals?: { meal_type: string }[] }
 interface Marker { date: string; training: boolean; eingeladen: boolean }
@@ -45,6 +46,7 @@ export default function KalenderPage() {
   const [popup, setPopup]     = useState<string | null>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [templateAction, setTemplateAction] = useState<{ type: 'save' | 'load' | 'copy'; dateStr: string } | null>(null)
+  const [showDistributeMenu, setShowDistributeMenu] = useState(false)
   const exportRef = useRef<HTMLDivElement>(null)
 
   const today = new Date(), todayStr = toDateStr(today)
@@ -98,7 +100,18 @@ export default function KalenderPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-lg font-bold" style={{ color: '#1e293b' }}>Kalender</h1>
-        <div className="relative" ref={exportRef}>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDistributeMenu(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl transition-all"
+            style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}
+            title="Großes Menü auf Tage verteilen">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            Großes Menü
+          </button>
+          <div className="relative" ref={exportRef}>
           <button
             onClick={() => setShowExportMenu(v => !v)}
             className="no-print flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl transition-all"
@@ -136,6 +149,7 @@ export default function KalenderPage() {
               </button>
             </div>
           )}
+          </div>
         </div>
       </div>
 
@@ -255,6 +269,13 @@ export default function KalenderPage() {
           sourceDate={templateAction.dateStr}
           onClose={() => setTemplateAction(null)}
           onCopied={() => { setTemplateAction(null); loadAll() }}
+        />
+      )}
+
+      {showDistributeMenu && (
+        <DistributeMenuModal
+          onClose={() => setShowDistributeMenu(false)}
+          onDistributed={() => { setShowDistributeMenu(false); loadAll() }}
         />
       )}
     </div>

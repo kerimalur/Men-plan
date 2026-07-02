@@ -162,6 +162,15 @@ export default function EinstellungenPage() {
             </div>
             <span style={{ color: '#cbd5e1' }}>›</span>
           </Link>
+          <Link href="/grosse-menus"
+            className="px-5 py-4 flex items-center justify-between transition-colors"
+            style={{ borderTop: '1px solid #f1f5f9', color: '#1e293b' }}>
+            <div>
+              <span className="text-sm font-medium">Große Menüs</span>
+              <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Mehrtägige Menüs erstellen und verteilen</p>
+            </div>
+            <span style={{ color: '#cbd5e1' }}>›</span>
+          </Link>
         </div>
       </div>
 

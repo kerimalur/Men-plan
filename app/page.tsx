@@ -185,10 +185,11 @@ export default function Dashboard() {
       </div>
 
       {/* Quick links */}
-      <div className="grid grid-cols-2 gap-3 mt-4">
+      <div className="grid grid-cols-3 gap-3 mt-4">
         {[
           { href: '/kalender', label: 'Wochenplanung', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
           { href: '/einkaufsliste', label: 'Einkaufsliste', bg: '#f0fdf4', color: '#166534', border: '#dcfce7' },
+          { href: '/grosse-menus', label: 'Große Menüs', bg: '#fefce8', color: '#854d0e', border: '#fef08a' },
         ].map(item => (
           <Link key={item.href} href={item.href}
             className="rounded-xl px-4 py-3.5 text-sm font-semibold transition-all text-center"
