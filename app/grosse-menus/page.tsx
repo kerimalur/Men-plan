@@ -47,28 +47,64 @@ interface EditItem {
   kcal: number
   protein: number
   cost: number
+  isCustom?: boolean
+  customKcalPer100?: number
+  customProteinPer100?: number
+  isQuick?: boolean
 }
 
 const DAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 const MONTH_SHORT = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
 
-// ── Add Meal Modal ─────────────────────────────────────────────
+// ── Add / Edit Meal Modal ─────────────────────────────────────
 
-function AddMealModal({ menuId, onClose, onSaved }: {
+function AddMealModal({ menuId, existingMeal, onClose, onSaved }: {
   menuId: string
+  existingMeal?: GrossesMenuMahlzeit | null
   onClose: () => void
   onSaved: () => void
 }) {
-  const [mealType, setMealType] = useState('mittagessen')
-  const [name, setName] = useState('')
-  const [items, setItems] = useState<EditItem[]>([])
+  const [mealType, setMealType] = useState(existingMeal?.meal_type || 'mittagessen')
+  const [name, setName] = useState(existingMeal?.name || '')
+  const [items, setItems] = useState<EditItem[]>(() =>
+    existingMeal?.grosse_menu_items.map(i => ({
+      localId: Math.random().toString(36).slice(2),
+      food_id: i.food_id,
+      food_name: i.food_name,
+      amount: i.amount,
+      unit: i.unit,
+      kcal: i.kcal,
+      protein: i.protein,
+      cost: i.cost,
+    })) || []
+  )
+
+  const [addMode, setAddMode] = useState<'search' | 'custom' | 'quick'>('search')
+
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Food[]>([])
   const [selectedFood, setSelectedFood] = useState<Food | null>(null)
   const [amount, setAmount] = useState('')
   const [unit, setUnit] = useState('g')
-  const [saving, setSaving] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+
+  const [customName, setCustomName] = useState('')
+  const [customKcal, setCustomKcal] = useState('')
+  const [customProtein, setCustomProtein] = useState('')
+  const [customCost, setCustomCost] = useState('')
+  const [customAmount, setCustomAmount] = useState('')
+  const [customUnit, setCustomUnit] = useState('g')
+  const [savingCustomFood, setSavingCustomFood] = useState(false)
+
+  const [quickKcal, setQuickKcal] = useState('')
+  const [quickProtein, setQuickProtein] = useState('')
+  const [quickCost, setQuickCost] = useState('')
+
+  const [saving, setSaving] = useState(false)
+  const [showSavePrompt, setShowSavePrompt] = useState(false)
+  const [pendingItems, setPendingItems] = useState<EditItem[] | null>(null)
+  const [newFoodPrices, setNewFoodPrices] = useState<Record<number, string>>({})
+  const [savingFoods, setSavingFoods] = useState(false)
 
   useEffect(() => {
     if (searchQuery.length < 1) { setSearchResults([]); return }
@@ -87,6 +123,13 @@ function AddMealModal({ menuId, onClose, onSaved }: {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  function effectiveFood(food: Food, sel: string) {
+    if (sel === 'g' && food.unit === 'stk' && food.calories_per_100g != null) {
+      return { calories_per_100: food.calories_per_100g, protein_per_100: food.protein_per_100g || 0, cost_per_100: 0 }
+    }
+    return food
+  }
+
   function selectFood(food: Food) {
     setSelectedFood(food)
     setSearchQuery(food.name)
@@ -97,34 +140,114 @@ function AddMealModal({ menuId, onClose, onSaved }: {
 
   function addItem() {
     if (!selectedFood || !amount) return
-    const nutrition = calcNutrition(selectedFood, amount, unit)
+    const calcUnit = (unit === 'g' && selectedFood.unit === 'stk') ? 'g' : unit
+    const n = calcNutrition(effectiveFood(selectedFood, unit), parseFloat(amount), calcUnit)
     setItems(prev => [...prev, {
       localId: Math.random().toString(36).slice(2),
       food_id: selectedFood.id,
       food_name: selectedFood.name,
       amount: parseFloat(amount),
-      unit,
-      kcal: nutrition.kcal,
-      protein: nutrition.protein,
-      cost: nutrition.cost,
+      unit: calcUnit,
+      kcal: n.kcal,
+      protein: n.protein,
+      cost: n.cost,
     }])
     setSelectedFood(null)
     setSearchQuery('')
     setAmount('')
   }
 
-  async function save() {
+  function addCustomItem() {
+    if (!customName.trim() || !customAmount || !customKcal) return
+    const amt = parseFloat(customAmount)
+    const kcalPer100 = parseFloat(customKcal) || 0
+    const protPer100 = parseFloat(customProtein) || 0
+    const costPer100 = parseFloat(customCost) || 0
+    const factor = customUnit === 'stk' ? amt : amt / 100
+    setItems(prev => [...prev, {
+      localId: Math.random().toString(36).slice(2),
+      food_id: null,
+      food_name: customName.trim(),
+      amount: amt,
+      unit: customUnit,
+      kcal: Math.round(kcalPer100 * factor * 10) / 10,
+      protein: Math.round(protPer100 * factor * 10) / 10,
+      cost: Math.round(costPer100 * factor * 100) / 100,
+      isCustom: true,
+      customKcalPer100: kcalPer100,
+      customProteinPer100: protPer100,
+    }])
+    setCustomName(''); setCustomKcal(''); setCustomProtein(''); setCustomCost(''); setCustomAmount('')
+  }
+
+  async function saveCustomFoodToDB() {
+    if (!customName.trim() || !customKcal) return
+    setSavingCustomFood(true)
+    const dbUnit = customUnit === 'stk' ? 'stk' : customUnit === 'ml' ? 'ml' : 'g'
+    const { data: newFood } = await supabase.from('foods').insert({
+      name: customName.trim(),
+      calories_per_100: parseFloat(customKcal) || 0,
+      protein_per_100: parseFloat(customProtein) || 0,
+      cost_per_100: parseFloat(customCost) || 0,
+      unit: dbUnit,
+    }).select().single()
+    setSavingCustomFood(false)
+    if (newFood) {
+      setAddMode('search')
+      setSelectedFood(newFood as Food)
+      setSearchQuery(newFood.name)
+      setUnit(dbUnit === 'ml' ? 'ml' : dbUnit === 'stk' ? 'stk' : 'g')
+      setCustomName(''); setCustomKcal(''); setCustomProtein(''); setCustomCost('')
+    }
+  }
+
+  function addQuickItem() {
+    if (!quickKcal) return
+    setItems(prev => [...prev, {
+      localId: Math.random().toString(36).slice(2),
+      food_id: null,
+      food_name: name.trim() || 'Direkteingabe',
+      amount: 1,
+      unit: 'stk',
+      kcal: parseFloat(quickKcal) || 0,
+      protein: parseFloat(quickProtein) || 0,
+      cost: parseFloat(quickCost) || 0,
+      isQuick: true,
+    }])
+    setQuickKcal(''); setQuickProtein(''); setQuickCost('')
+  }
+
+  function handleSave() {
     if (!name.trim() || items.length === 0) return
+    const customFoods = items.filter(i => i.isCustom)
+    if (customFoods.length > 0) {
+      setPendingItems(items)
+      setShowSavePrompt(true)
+    } else {
+      doSave(items)
+    }
+  }
+
+  async function doSave(finalItems: EditItem[]) {
     setSaving(true)
-    const { data: meal } = await supabase
-      .from('grosse_menu_meals')
-      .insert({ menu_id: menuId, meal_type: mealType, name: name.trim() })
-      .select()
-      .single()
-    if (meal && items.length > 0) {
+    let mealId: string
+    if (existingMeal) {
+      await supabase.from('grosse_menu_meals')
+        .update({ meal_type: mealType, name: name.trim() })
+        .eq('id', existingMeal.id)
+      await supabase.from('grosse_menu_items').delete().eq('menu_meal_id', existingMeal.id)
+      mealId = existingMeal.id
+    } else {
+      const { data: meal } = await supabase
+        .from('grosse_menu_meals')
+        .insert({ menu_id: menuId, meal_type: mealType, name: name.trim() })
+        .select().single()
+      mealId = meal!.id
+    }
+    if (finalItems.length > 0) {
       await supabase.from('grosse_menu_items').insert(
-        items.map(item => ({
-          menu_meal_id: meal.id,
+        finalItems.map(item => ({
+          menu_meal_id: mealId,
           food_id: item.food_id,
           food_name: item.food_name,
           amount: item.amount,
@@ -139,9 +262,51 @@ function AddMealModal({ menuId, onClose, onSaved }: {
     onSaved()
   }
 
+  async function confirmSaveNewFoods(saveToDB: boolean) {
+    if (!pendingItems) return
+    let finalItems = [...pendingItems]
+    if (saveToDB) {
+      setSavingFoods(true)
+      const customFoods = pendingItems.filter(i => i.isCustom)
+      for (let i = 0; i < customFoods.length; i++) {
+        const ci = customFoods[i]
+        const price = parseFloat(newFoodPrices[i] || '0') || 0
+        const { data: newFood } = await supabase.from('foods').insert({
+          name: ci.food_name,
+          calories_per_100: ci.customKcalPer100 || 0,
+          protein_per_100: ci.customProteinPer100 || 0,
+          cost_per_100: price,
+          unit: ci.unit === 'stk' ? 'stk' : (ci.unit === 'ml' || ci.unit === 'dl' || ci.unit === 'l') ? 'ml' : 'g',
+        }).select().single()
+        if (newFood) {
+          finalItems = finalItems.map(item =>
+            item.food_name === ci.food_name && item.isCustom
+              ? { ...item, food_id: newFood.id, cost: Math.round(price * (ci.unit === 'stk' ? ci.amount : ci.amount / 100) * 1000) / 1000, isCustom: false }
+              : item
+          )
+        }
+      }
+      setSavingFoods(false)
+    }
+    doSave(finalItems)
+  }
+
+  const totals = items.reduce(
+    (acc, item) => ({ kcal: acc.kcal + item.kcal, protein: acc.protein + item.protein, cost: acc.cost + item.cost }),
+    { kcal: 0, protein: 0, cost: 0 }
+  )
+
+  const preview = selectedFood && amount
+    ? calcNutrition(effectiveFood(selectedFood, unit), parseFloat(amount) || 0, (unit === 'g' && selectedFood.unit === 'stk') ? 'g' : unit)
+    : null
+
   const inputStyle: React.CSSProperties = {
     background: 'white', border: '1px solid #e2e8f0', color: '#1e293b',
     borderRadius: '0.75rem', padding: '0.625rem 0.75rem', fontSize: '0.875rem', outline: 'none', width: '100%',
+  }
+  const selectStyle: React.CSSProperties = {
+    background: 'white', border: '1px solid #e2e8f0', color: '#1e293b',
+    borderRadius: '0.75rem', padding: '0.625rem 0.5rem', fontSize: '0.875rem', outline: 'none',
   }
 
   return (
@@ -149,13 +314,19 @@ function AddMealModal({ menuId, onClose, onSaved }: {
       style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
       <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl shadow-xl"
         style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+
+        {/* Header */}
         <div className="px-5 py-4 flex items-center justify-between"
           style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-          <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>Mahlzeit hinzufügen</h3>
+          <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>
+            {existingMeal ? 'Mahlzeit bearbeiten' : 'Mahlzeit hinzufügen'}
+          </h3>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
             style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
         </div>
+
         <div className="p-5 space-y-4">
+          {/* Type + Name */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Mahlzeittyp</label>
@@ -172,85 +343,241 @@ function AddMealModal({ menuId, onClose, onSaved }: {
             </div>
           </div>
 
+          {/* Add ingredient area */}
           <div className="rounded-xl p-4 space-y-3" style={{ border: '1px solid #f1f5f9', background: '#f8fafc' }}>
-            <p className="text-xs font-semibold" style={{ color: '#64748b' }}>
-              Zutat hinzufügen
-            </p>
             <p className="text-xs" style={{ color: '#94a3b8' }}>
               Gesamtmenge für alle Tage eingeben (z.B. 900 g Pasta für 3 Tage)
             </p>
-            <div className="relative" ref={searchRef}>
-              <input type="text" value={searchQuery}
-                onChange={e => { setSearchQuery(e.target.value); setSelectedFood(null) }}
-                placeholder="Lebensmittel suchen…" style={inputStyle} />
-              {searchResults.length > 0 && (
-                <ul className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl shadow-xl max-h-44 overflow-y-auto"
-                  style={{ background: 'white', border: '1px solid #e2e8f0' }}>
-                  {searchResults.map(food => (
-                    <li key={food.id} onMouseDown={() => selectFood(food)}
-                      className="px-3 py-2.5 text-sm cursor-pointer"
-                      style={{ color: '#1e293b' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <span className="font-medium">{food.name}</span>
-                      <span className="text-xs ml-2" style={{ color: '#64748b' }}>{food.calories_per_100} kcal</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+
+            {/* Mode toggle */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {(['search', 'custom', 'quick'] as const).map((mode, idx) => {
+                const labels = ['Aus Datenbank', 'Eigenes Lebensmittel', 'Schnelleingabe']
+                return (
+                  <button key={mode} onClick={() => setAddMode(mode)}
+                    className="text-xs font-medium px-3 py-1 rounded-lg transition-colors"
+                    style={addMode === mode
+                      ? { background: '#475569', color: 'white' }
+                      : { background: '#f1f5f9', color: '#64748b' }}>
+                    {labels[idx]}
+                  </button>
+                )
+              })}
             </div>
-            <div className="flex gap-2">
-              <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addItem()}
-                placeholder="Menge" min="0" step="1"
-                style={{ ...inputStyle, flex: 1, width: undefined }} />
-              <select value={unit} onChange={e => setUnit(e.target.value)}
-                style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: '0.75rem', padding: '0.625rem 0.5rem', fontSize: '0.875rem', outline: 'none' }}>
-                {selectedFood?.unit === 'ml' ? (
-                  <><option value="ml">ml</option><option value="dl">dl</option><option value="l">l</option></>
-                ) : selectedFood?.unit === 'stk' ? (
-                  <option value="stk">Stk.</option>
-                ) : <option value="g">g</option>}
-              </select>
-              <button onClick={addItem} disabled={!selectedFood || !amount}
-                className="px-4 rounded-xl text-sm font-bold text-white disabled:opacity-40"
-                style={{ background: '#475569' }}>+</button>
-            </div>
+
+            {addMode === 'search' ? (
+              <>
+                <div className="relative" ref={searchRef}>
+                  <input type="text" value={searchQuery}
+                    onChange={e => { setSearchQuery(e.target.value); setSelectedFood(null) }}
+                    placeholder="Lebensmittel suchen…" style={inputStyle} />
+                  {searchResults.length > 0 && (
+                    <ul className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl shadow-xl max-h-44 overflow-y-auto"
+                      style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                      {searchResults.map(food => (
+                        <li key={food.id} onMouseDown={() => selectFood(food)}
+                          className="px-3 py-2.5 text-sm cursor-pointer"
+                          style={{ color: '#1e293b' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <span className="font-medium">{food.name}</span>
+                          <span className="text-xs ml-2" style={{ color: '#64748b' }}>
+                            {food.calories_per_100} kcal · {food.protein_per_100}g P
+                            {food.unit === 'stk' && food.calories_per_100g != null && (
+                              <span style={{ color: '#059669' }}> · auch in g</span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addItem()}
+                    placeholder="Menge" min="0" step="1"
+                    style={{ ...inputStyle, flex: 1, width: undefined }} />
+                  <select value={unit} onChange={e => setUnit(e.target.value)} style={selectStyle}>
+                    {selectedFood?.unit === 'ml' ? (
+                      <><option value="ml">ml</option><option value="dl">dl</option><option value="l">l</option></>
+                    ) : selectedFood?.unit === 'stk' ? (
+                      <>
+                        <option value="stk">Stk.</option>
+                        {selectedFood.calories_per_100g != null && <option value="g">g</option>}
+                      </>
+                    ) : (
+                      <option value="g">g</option>
+                    )}
+                  </select>
+                  <button onClick={addItem} disabled={!selectedFood || !amount}
+                    className="px-4 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+                    style={{ background: '#475569' }}>+</button>
+                </div>
+                {preview && (
+                  <div className="text-xs rounded-lg px-3 py-2" style={{ color: '#64748b', background: '#f1f5f9' }}>
+                    {preview.kcal} kcal · {preview.protein}g Protein · CHF {preview.cost.toFixed(2)}
+                  </div>
+                )}
+              </>
+            ) : addMode === 'custom' ? (
+              <>
+                <input type="text" value={customName} onChange={e => setCustomName(e.target.value)}
+                  placeholder="Name (z.B. Mehl, Honig…)" style={inputStyle} />
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="number" value={customKcal} onChange={e => setCustomKcal(e.target.value)}
+                    placeholder="kcal/100g" min="0" style={inputStyle} />
+                  <input type="number" value={customProtein} onChange={e => setCustomProtein(e.target.value)}
+                    placeholder="Protein/100g" min="0" style={inputStyle} />
+                  <input type="number" value={customCost} onChange={e => setCustomCost(e.target.value)}
+                    placeholder="CHF/100g" min="0" step="0.01" style={inputStyle} />
+                </div>
+                <button onClick={saveCustomFoodToDB}
+                  disabled={!customName.trim() || !customKcal || savingCustomFood}
+                  className="w-full py-1.5 rounded-lg text-xs font-medium disabled:opacity-40"
+                  style={{ background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>
+                  {savingCustomFood ? 'Speichern…' : '✨ In Datenbank speichern & Menge eingeben'}
+                </button>
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.5rem' }}>
+                  <p className="text-xs mb-2" style={{ color: '#94a3b8' }}>Oder direkt hinzufügen (ohne Datenbank):</p>
+                  <div className="flex gap-2">
+                    <input type="number" value={customAmount} onChange={e => setCustomAmount(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addCustomItem()}
+                      placeholder="Menge" min="0" step="1"
+                      style={{ ...inputStyle, flex: 1, width: undefined }} />
+                    <select value={customUnit} onChange={e => setCustomUnit(e.target.value)} style={selectStyle}>
+                      <option value="g">g</option>
+                      <option value="ml">ml</option>
+                      <option value="stk">Stk.</option>
+                    </select>
+                    <button onClick={addCustomItem}
+                      disabled={!customName.trim() || !customAmount || !customKcal}
+                      className="px-4 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+                      style={{ background: '#475569' }}>+</button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="number" value={quickKcal} onChange={e => setQuickKcal(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addQuickItem()}
+                    placeholder="kcal" min="0" style={inputStyle} />
+                  <input type="number" value={quickProtein} onChange={e => setQuickProtein(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addQuickItem()}
+                    placeholder="Protein g" min="0" style={inputStyle} />
+                  <input type="number" value={quickCost} onChange={e => setQuickCost(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addQuickItem()}
+                    placeholder="CHF" min="0" step="0.01" style={inputStyle} />
+                </div>
+                <button onClick={addQuickItem} disabled={!quickKcal}
+                  className="w-full text-white px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+                  style={{ background: '#475569' }}>
+                  Hinzufügen
+                </button>
+                <p className="text-xs" style={{ color: '#94a3b8' }}>
+                  Nur Kalorien, Protein und ungefährer Preis – ohne einzelne Lebensmittel.
+                </p>
+              </>
+            )}
           </div>
 
+          {/* Items list */}
           {items.length > 0 && (
             <div>
-              <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>
-                Zutaten ({items.length})
-              </p>
+              <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>Zutaten ({items.length})</p>
               <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #f1f5f9' }}>
                 {items.map((item, i) => (
                   <div key={item.localId} className="flex items-center justify-between px-3 py-2.5"
                     style={i > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}>
-                    <div>
-                      <span className="text-sm font-medium" style={{ color: '#1e293b' }}>{item.food_name}</span>
-                      <span className="text-xs ml-2" style={{ color: '#94a3b8' }}>
-                        {item.amount}{item.unit} · {item.kcal} kcal
-                      </span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium truncate" style={{ color: '#1e293b' }}>{item.food_name}</span>
+                      {item.isCustom && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0"
+                          style={{ background: '#fef3c7', color: '#92400e' }}>eigen</span>
+                      )}
+                      {item.isQuick && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0"
+                          style={{ background: '#e0e7ff', color: '#4338ca' }}>schnell</span>
+                      )}
+                      {!item.isQuick && (
+                        <span className="text-xs shrink-0" style={{ color: '#94a3b8' }}>{item.amount}{item.unit}</span>
+                      )}
                     </div>
-                    <button onClick={() => setItems(prev => prev.filter(x => x.localId !== item.localId))}
-                      className="text-base" style={{ color: '#94a3b8' }}>×</button>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <span className="text-xs" style={{ color: '#94a3b8' }}>{item.kcal} kcal</span>
+                      <button onClick={() => setItems(prev => prev.filter(x => x.localId !== item.localId))}
+                        className="text-base" style={{ color: '#94a3b8' }}>×</button>
+                    </div>
                   </div>
                 ))}
+              </div>
+              <div className="flex gap-3 mt-2 px-1 text-xs font-semibold" style={{ color: '#64748b' }}>
+                <span>{Math.round(totals.kcal)} kcal</span>
+                <span>{Math.round(totals.protein * 10) / 10}g P</span>
+                <span>CHF {totals.cost.toFixed(2)}</span>
               </div>
             </div>
           )}
         </div>
 
+        {/* Footer */}
         <div className="px-5 pb-5 flex gap-2">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium"
             style={{ background: '#f1f5f9', color: '#64748b' }}>Abbrechen</button>
-          <button onClick={save} disabled={!name.trim() || items.length === 0 || saving}
+          <button onClick={handleSave} disabled={!name.trim() || items.length === 0 || saving}
             className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
             style={{ background: '#059669' }}>
-            {saving ? 'Speichern…' : 'Hinzufügen'}
+            {saving ? 'Speichern…' : existingMeal ? 'Speichern' : 'Hinzufügen'}
           </button>
         </div>
+
+        {/* Save-to-DB prompt for custom foods */}
+        {showSavePrompt && pendingItems && (
+          <div className="fixed inset-0 flex items-center justify-center z-[60] p-4"
+            style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}>
+            <div className="w-full max-w-sm shadow-xl overflow-y-auto max-h-[80vh]"
+              style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}>
+              <div className="px-5 py-4" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <h3 className="font-semibold text-sm" style={{ color: '#1e293b' }}>Neue Lebensmittel erkannt</h3>
+                <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
+                  Sollen diese in die Datenbank aufgenommen werden?
+                </p>
+              </div>
+              <div className="p-5 space-y-3">
+                {pendingItems.filter(i => i.isCustom).map((cf, i) => (
+                  <div key={i} className="rounded-lg p-3" style={{ border: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium" style={{ color: '#1e293b' }}>{cf.food_name}</span>
+                      <span className="text-xs" style={{ color: '#64748b' }}>{cf.kcal} kcal</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs shrink-0" style={{ color: '#64748b' }}>
+                        CHF pro {cf.unit === 'stk' ? 'Stk.' : `100${cf.unit}`}:
+                      </span>
+                      <input type="number" min="0" step="0.01"
+                        value={newFoodPrices[i] || ''}
+                        onChange={e => setNewFoodPrices(prev => ({ ...prev, [i]: e.target.value }))}
+                        placeholder="0.00"
+                        style={{ flex: 1, background: 'white', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: '0.5rem', padding: '0.375rem 0.75rem', fontSize: '0.875rem', outline: 'none' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="px-5 py-4 flex gap-2" style={{ borderTop: '1px solid #f1f5f9' }}>
+                <button onClick={() => confirmSaveNewFoods(false)}
+                  className="flex-1 py-2 text-sm rounded-lg"
+                  style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                  Nein, nur tracken
+                </button>
+                <button onClick={() => confirmSaveNewFoods(true)} disabled={savingFoods}
+                  className="flex-1 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-40"
+                  style={{ background: '#059669' }}>
+                  {savingFoods ? 'Speichern…' : 'In DB speichern'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -649,6 +976,7 @@ export default function GrosseMenusPage() {
   const [newName, setNewName] = useState('')
   const [newDays, setNewDays] = useState(3)
   const [addingMealTo, setAddingMealTo] = useState<string | null>(null)
+  const [editingMeal, setEditingMeal] = useState<GrossesMenuMahlzeit | null>(null)
   const [loadingVorlageTo, setLoadingVorlageTo] = useState<GrossesMenu | null>(null)
   const [distributeMenu, setDistributeMenu] = useState<GrossesMenu | null>(null)
 
@@ -853,10 +1181,16 @@ export default function GrosseMenusPage() {
                                   {meal.name}
                                 </p>
                               </div>
-                              <button onClick={() => deleteMeal(meal, menu.name)}
-                                className="text-xs ml-3 shrink-0" style={{ color: '#94a3b8' }}>
-                                Entfernen
-                              </button>
+                              <div className="flex items-center gap-2 ml-3 shrink-0">
+                                <button onClick={() => setEditingMeal(meal)}
+                                  className="text-xs" style={{ color: '#475569' }}>
+                                  Bearbeiten
+                                </button>
+                                <button onClick={() => deleteMeal(meal, menu.name)}
+                                  className="text-xs" style={{ color: '#94a3b8' }}>
+                                  Entfernen
+                                </button>
+                              </div>
                             </div>
 
                             {meal.grosse_menu_items.length > 0 && (
@@ -924,14 +1258,17 @@ export default function GrosseMenusPage() {
       </div>
 
       {/* Modals */}
-      {addingMealTo && (
+      {(addingMealTo || editingMeal) && (
         <AddMealModal
-          menuId={addingMealTo}
-          onClose={() => setAddingMealTo(null)}
+          menuId={addingMealTo || editingMeal!.menu_id}
+          existingMeal={editingMeal}
+          onClose={() => { setAddingMealTo(null); setEditingMeal(null) }}
           onSaved={async () => {
+            const wasEditing = !!editingMeal
             setAddingMealTo(null)
+            setEditingMeal(null)
             await loadMenus()
-            toast('Mahlzeit hinzugefügt', 'success')
+            toast(wasEditing ? 'Mahlzeit aktualisiert' : 'Mahlzeit hinzugefügt', 'success')
           }}
         />
       )}
