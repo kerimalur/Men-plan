@@ -33,3 +33,18 @@ CREATE TABLE IF NOT EXISTS grosse_menu_items (
   cost         DECIMAL(8,4) NOT NULL DEFAULT 0,
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ============================================================
+-- RLS + Policies (same pattern as all other tables)
+-- ============================================================
+ALTER TABLE grosse_menus       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE grosse_menu_meals  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE grosse_menu_items  ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "allow_all" ON grosse_menus;
+DROP POLICY IF EXISTS "allow_all" ON grosse_menu_meals;
+DROP POLICY IF EXISTS "allow_all" ON grosse_menu_items;
+
+CREATE POLICY "allow_all" ON grosse_menus       FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON grosse_menu_meals  FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON grosse_menu_items  FOR ALL TO anon USING (true) WITH CHECK (true);

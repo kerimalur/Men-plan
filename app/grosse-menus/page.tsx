@@ -256,6 +256,172 @@ function AddMealModal({ menuId, onClose, onSaved }: {
   )
 }
 
+// ── Load Vorlage Modal ─────────────────────────────────────────
+
+interface MealTemplate {
+  id: string
+  name: string
+  meal_type: string
+  meal_template_items: {
+    id: string
+    amount: number
+    unit: string
+    foods: { id: string; name: string; calories_per_100: number; protein_per_100: number; cost_per_100: number; unit: string }
+  }[]
+}
+
+function LoadVorlageModal({ menu, onClose, onSaved }: {
+  menu: GrossesMenu
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { toast } = useToast()
+  const [templates, setTemplates] = useState<MealTemplate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    supabase
+      .from('meal_templates')
+      .select('*, meal_template_items(*, foods(*))')
+      .order('name')
+      .then(({ data }) => { setTemplates((data as MealTemplate[]) || []); setLoading(false) })
+  }, [])
+
+  const filtered = templates.filter(t =>
+    t.name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  async function insertTemplate(tpl: MealTemplate) {
+    setSaving(tpl.id)
+    try {
+      const { data: meal } = await supabase
+        .from('grosse_menu_meals')
+        .insert({ menu_id: menu.id, meal_type: tpl.meal_type === 'hauptmahlzeit' ? 'mittagessen' : tpl.meal_type, name: tpl.name })
+        .select()
+        .single()
+
+      if (meal && tpl.meal_template_items.length > 0) {
+        await supabase.from('grosse_menu_items').insert(
+          tpl.meal_template_items.map(item => {
+            const n = calcNutrition(item.foods, item.amount * menu.num_days, item.unit)
+            return {
+              menu_meal_id: meal.id,
+              food_id: item.foods.id,
+              food_name: item.foods.name,
+              amount: item.amount * menu.num_days,
+              unit: item.unit,
+              kcal: n.kcal,
+              protein: n.protein,
+              cost: n.cost,
+            }
+          })
+        )
+      }
+      toast(`"${tpl.name}" eingefügt (×${menu.num_days} Tage)`, 'success')
+      onSaved()
+    } catch {
+      toast('Fehler beim Einfügen', 'error')
+      setSaving(null)
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    background: 'white', border: '1px solid #e2e8f0', color: '#1e293b',
+    borderRadius: '0.75rem', padding: '0.625rem 0.75rem', fontSize: '0.875rem', outline: 'none', width: '100%',
+  }
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
+      <div className="w-full max-w-md max-h-[88vh] flex flex-col rounded-2xl shadow-xl overflow-hidden"
+        style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+        <div className="px-5 py-4 flex items-center justify-between shrink-0"
+          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>Vorlage einfügen</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>
+              Mengen werden automatisch ×{menu.num_days} berechnet
+            </p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
+            style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
+        </div>
+
+        <div className="px-5 pt-4 shrink-0">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Vorlage suchen…"
+            style={inputStyle}
+            autoFocus
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {loading ? (
+            <p className="text-center text-xs py-8" style={{ color: '#94a3b8' }}>Laden…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-center text-xs py-8" style={{ color: '#94a3b8' }}>
+              {search ? 'Keine Treffer' : 'Keine Vorlagen vorhanden'}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map(tpl => {
+                const totalKcal = tpl.meal_template_items.reduce((s, i) => {
+                  return s + calcNutrition(i.foods, i.amount, i.unit).kcal
+                }, 0)
+                const totalKcalMultiplied = totalKcal * menu.num_days
+                return (
+                  <div key={tpl.id} className="rounded-xl p-3.5"
+                    style={{ border: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: '#1e293b' }}>{tpl.name}</p>
+                        <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>
+                          {tpl.meal_template_items.length} Zutaten
+                          {totalKcal > 0 && ` · ${Math.round(totalKcal)} kcal/Tag → ${Math.round(totalKcalMultiplied)} kcal gesamt`}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => insertTemplate(tpl)}
+                        disabled={saving === tpl.id}
+                        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-50"
+                        style={{ background: '#059669' }}>
+                        {saving === tpl.id ? '…' : 'Einfügen'}
+                      </button>
+                    </div>
+                    {tpl.meal_template_items.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {tpl.meal_template_items.map(item => (
+                          <div key={item.id} className="flex items-center justify-between text-xs"
+                            style={{ color: '#64748b' }}>
+                            <span>{item.foods.name}</span>
+                            <span style={{ color: '#94a3b8' }}>
+                              {item.amount}{item.unit} × {menu.num_days} = <strong style={{ color: '#475569' }}>{item.amount * menu.num_days}{item.unit}</strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 shrink-0" style={{ borderTop: '1px solid #f1f5f9' }}>
+          <button onClick={onClose} className="w-full py-2.5 rounded-xl text-sm font-medium"
+            style={{ background: '#f1f5f9', color: '#64748b' }}>Schließen</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Distribute Modal ───────────────────────────────────────────
 
 function DistributeModal({ menu, onClose, onDistributed }: {
@@ -437,6 +603,7 @@ export default function GrosseMenusPage() {
   const [newName, setNewName] = useState('')
   const [newDays, setNewDays] = useState(3)
   const [addingMealTo, setAddingMealTo] = useState<string | null>(null)
+  const [loadingVorlageTo, setLoadingVorlageTo] = useState<GrossesMenu | null>(null)
   const [distributeMenu, setDistributeMenu] = useState<GrossesMenu | null>(null)
 
   useEffect(() => { loadMenus() }, [])
@@ -679,11 +846,16 @@ export default function GrosseMenusPage() {
                   )}
 
                   {/* Actions */}
-                  <div className="px-5 py-4 flex gap-2" style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <div className="px-5 py-4 flex gap-2 flex-wrap" style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <button onClick={() => setLoadingVorlageTo(menu)}
+                      className="flex-1 py-2.5 rounded-xl text-xs font-semibold"
+                      style={{ background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>
+                      Vorlage einfügen
+                    </button>
                     <button onClick={() => setAddingMealTo(menu.id)}
                       className="flex-1 py-2.5 rounded-xl text-xs font-semibold"
                       style={{ background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}>
-                      + Mahlzeit
+                      + Manuell
                     </button>
                     <button
                       onClick={() => setDistributeMenu(menu)}
@@ -723,6 +895,17 @@ export default function GrosseMenusPage() {
           menu={distributeMenu}
           onClose={() => setDistributeMenu(null)}
           onDistributed={() => setDistributeMenu(null)}
+        />
+      )}
+
+      {loadingVorlageTo && (
+        <LoadVorlageModal
+          menu={loadingVorlageTo}
+          onClose={() => setLoadingVorlageTo(null)}
+          onSaved={async () => {
+            setLoadingVorlageTo(null)
+            await loadMenus()
+          }}
         />
       )}
     </div>
