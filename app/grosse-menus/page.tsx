@@ -7,6 +7,7 @@ import { calcNutrition } from '@/lib/calculations'
 import { MEAL_TYPE_LABELS, MEAL_TYPE_ORDER } from '@/lib/mealTypes'
 import { toDateStr, getMondayOfWeek } from '@/lib/dates'
 import { useToast } from '@/components/Toast'
+import DistributeMenuModal from '@/components/DistributeMenuModal'
 import type { Food } from '@/components/FoodSearch'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -795,176 +796,6 @@ function LoadVorlageModal({ menu, onClose, onSaved }: {
   )
 }
 
-// ── Distribute Modal ───────────────────────────────────────────
-
-function DistributeModal({ menu, onClose, onDistributed }: {
-  menu: GrossesMenu
-  onClose: () => void
-  onDistributed: () => void
-}) {
-  const { toast } = useToast()
-  const [startDate, setStartDate] = useState(toDateStr(new Date()))
-  const [distributing, setDistributing] = useState(false)
-
-  function getPreviewDates(): string[] {
-    const dates: string[] = []
-    const start = new Date(startDate + 'T12:00:00')
-    for (let i = 0; i < menu.num_days; i++) {
-      const d = new Date(start)
-      d.setDate(d.getDate() + i)
-      dates.push(toDateStr(d))
-    }
-    return dates
-  }
-
-  async function distribute() {
-    setDistributing(true)
-    try {
-      const dates = getPreviewDates()
-      for (const dateStr of dates) {
-        let planId: string
-        const { data: existing } = await supabase
-          .from('meal_plans')
-          .select('id')
-          .eq('date', dateStr)
-          .maybeSingle()
-
-        if (existing) {
-          planId = existing.id
-        } else {
-          const { data: created } = await supabase
-            .from('meal_plans')
-            .insert({ date: dateStr, kcal_total: 0, protein_total: 0, cost_total: 0 })
-            .select()
-            .single()
-          planId = created!.id
-        }
-
-        for (const menuMeal of menu.grosse_menu_meals) {
-          const items = menuMeal.grosse_menu_items || []
-          const { data: newMeal } = await supabase
-            .from('meals')
-            .insert({
-              plan_id: planId,
-              meal_type: menuMeal.meal_type,
-              name: menuMeal.name,
-              kcal_total: Math.round(items.reduce((s, i) => s + i.kcal, 0) / menu.num_days * 10) / 10,
-              protein_total: Math.round(items.reduce((s, i) => s + i.protein, 0) / menu.num_days * 10) / 10,
-              cost_total: Math.round(items.reduce((s, i) => s + i.cost, 0) / menu.num_days * 1000) / 1000,
-            })
-            .select()
-            .single()
-
-          if (newMeal && items.length > 0) {
-            await supabase.from('meal_items').insert(
-              items.map(item => ({
-                meal_id: newMeal.id,
-                food_id: item.food_id,
-                food_name: item.food_name,
-                amount: Math.round(item.amount / menu.num_days * 100) / 100,
-                unit: item.unit,
-                kcal: Math.round(item.kcal / menu.num_days * 10) / 10,
-                protein: Math.round(item.protein / menu.num_days * 10) / 10,
-                cost: Math.round(item.cost / menu.num_days * 1000) / 1000,
-              }))
-            )
-          }
-        }
-
-        // Recalc plan totals
-        const { data: allMeals } = await supabase
-          .from('meals')
-          .select('kcal_total,protein_total,cost_total')
-          .eq('plan_id', planId)
-        const t = (allMeals || []).reduce(
-          (acc, m) => ({
-            kcal: acc.kcal + Number(m.kcal_total),
-            protein: acc.protein + Number(m.protein_total),
-            cost: acc.cost + Number(m.cost_total),
-          }),
-          { kcal: 0, protein: 0, cost: 0 }
-        )
-        await supabase
-          .from('meal_plans')
-          .update({ kcal_total: t.kcal, protein_total: t.protein, cost_total: t.cost })
-          .eq('id', planId)
-      }
-
-      toast(`"${menu.name}" auf ${menu.num_days} Tage verteilt`, 'success')
-      onDistributed()
-    } catch {
-      toast('Fehler beim Verteilen', 'error')
-      setDistributing(false)
-    }
-  }
-
-  const previewDates = getPreviewDates()
-
-  return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
-      style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
-      <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-xl"
-        style={{ background: 'white', border: '1px solid #e2e8f0' }}>
-        <div className="px-5 py-4 flex items-center justify-between"
-          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-          <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>Menü verteilen</h3>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
-            style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="px-3 py-2.5 rounded-xl"
-            style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-            <p className="text-sm font-bold" style={{ color: '#166534' }}>{menu.name}</p>
-            <p className="text-xs mt-0.5" style={{ color: '#16a34a' }}>
-              {menu.num_days} Tage · {menu.grosse_menu_meals.length} Mahlzeit{menu.grosse_menu_meals.length !== 1 ? 'en' : ''}
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Startdatum</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-              style={{ border: '1px solid #e2e8f0', color: '#1e293b' }} />
-          </div>
-
-          <div>
-            <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>
-              Wird verteilt auf {previewDates.length} Tage
-            </p>
-            <div className="space-y-1.5">
-              {previewDates.map((d, i) => {
-                const dateObj = new Date(d + 'T12:00:00')
-                return (
-                  <div key={d} className="flex items-center gap-3 px-3 py-2 rounded-lg"
-                    style={{ background: '#f8fafc', border: '1px solid #f1f5f9' }}>
-                    <span className="text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full shrink-0"
-                      style={{ background: '#eef2ff', color: '#4f46e5' }}>
-                      {i + 1}
-                    </span>
-                    <span className="text-xs" style={{ color: '#475569' }}>
-                      {DAY_SHORT[dateObj.getDay()]}, {dateObj.getDate()}. {MONTH_SHORT[dateObj.getMonth()]}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div className="px-5 pb-5 flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium"
-            style={{ background: '#f1f5f9', color: '#64748b' }}>Abbrechen</button>
-          <button onClick={distribute} disabled={!startDate || distributing}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
-            style={{ background: '#059669' }}>
-            {distributing ? 'Verteilen…' : 'Verteilen'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Main Page ──────────────────────────────────────────────────
 
 export default function GrosseMenusPage() {
@@ -980,6 +811,7 @@ export default function GrosseMenusPage() {
   const [loadingVorlageTo, setLoadingVorlageTo] = useState<GrossesMenu | null>(null)
   const [distributeMenu, setDistributeMenu] = useState<GrossesMenu | null>(null)
   const [distStats, setDistStats] = useState<Record<string, { thisWeek: number; nextWeek: number }>>({})
+  const [editingDays, setEditingDays] = useState<{ id: string; value: string } | null>(null)
 
   useEffect(() => { loadMenus() }, [])
 
@@ -1043,6 +875,14 @@ export default function GrosseMenusPage() {
     await supabase.from('grosse_menu_meals').delete().eq('id', meal.id)
     await loadMenus()
     toast(`"${meal.name}" entfernt`, 'success')
+  }
+
+  async function saveNumDays(menuId: string, days: number) {
+    if (days < 1) return
+    await supabase.from('grosse_menus').update({ num_days: days }).eq('id', menuId)
+    setEditingDays(null)
+    await loadMenus()
+    toast('Tage aktualisiert', 'success')
   }
 
   if (loading) {
@@ -1144,6 +984,17 @@ export default function GrosseMenusPage() {
           const totalProtein = allItems.reduce((s, i) => s + Number(i.protein), 0)
           const perDayKcal = menu.num_days > 0 ? Math.round(totalKcal / menu.num_days) : 0
           const perDayProtein = menu.num_days > 0 ? Math.round(totalProtein / menu.num_days * 10) / 10 : 0
+          const totalCost = allItems.reduce((s, i) => s + Number(i.cost), 0)
+
+          // Aggregate ingredients across all meals
+          const ingredMap = new Map<string, { name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }>()
+          for (const item of allItems) {
+            const key = `${item.food_name}||${item.unit}`
+            const e = ingredMap.get(key)
+            if (e) { e.amount += Number(item.amount); e.kcal += Number(item.kcal); e.protein += Number(item.protein); e.cost += Number(item.cost) }
+            else ingredMap.set(key, { name: item.food_name, amount: Number(item.amount), unit: item.unit, kcal: Number(item.kcal), protein: Number(item.protein), cost: Number(item.cost) })
+          }
+          const ingredList = Array.from(ingredMap.values())
 
           return (
             <div key={menu.id} className="rounded-2xl overflow-hidden"
@@ -1186,6 +1037,77 @@ export default function GrosseMenusPage() {
               {/* Expanded content */}
               {isExpanded && (
                 <div>
+                  {/* Edit num_days */}
+                  <div className="px-5 py-3 flex items-center gap-2 flex-wrap"
+                    style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                    <span className="text-xs shrink-0" style={{ color: '#64748b' }}>Geplant für:</span>
+                    {editingDays?.id === menu.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => setEditingDays(d => d ? { ...d, value: String(Math.max(1, parseInt(d.value || '1') - 1)) } : null)}
+                          className="w-6 h-6 rounded-lg text-sm font-bold flex items-center justify-center"
+                          style={{ background: '#f1f5f9', color: '#475569' }}>−</button>
+                        <input type="number" min="1" max="30"
+                          value={editingDays.value}
+                          onChange={e => setEditingDays(d => d ? { ...d, value: e.target.value } : null)}
+                          className="w-10 text-center text-sm font-bold rounded-lg outline-none"
+                          style={{ border: '1px solid #e2e8f0', color: '#1e293b', padding: '0.125rem' }} />
+                        <button onClick={() => setEditingDays(d => d ? { ...d, value: String(Math.min(30, parseInt(d.value || '1') + 1)) } : null)}
+                          className="w-6 h-6 rounded-lg text-sm font-bold flex items-center justify-center"
+                          style={{ background: '#f1f5f9', color: '#475569' }}>+</button>
+                        <span className="text-xs" style={{ color: '#64748b' }}>Tage</span>
+                        <button onClick={() => saveNumDays(menu.id, parseInt(editingDays.value) || menu.num_days)}
+                          className="px-2 py-1 rounded-lg text-xs font-bold text-white ml-1"
+                          style={{ background: '#059669' }}>✓</button>
+                        <button onClick={() => setEditingDays(null)}
+                          className="text-xs ml-1" style={{ color: '#94a3b8' }}>×</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setEditingDays({ id: menu.id, value: String(menu.num_days) })}
+                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full"
+                        style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
+                        {menu.num_days} Tage ✎
+                      </button>
+                    )}
+                    {perDayKcal > 0 && (
+                      <span className="text-xs ml-auto" style={{ color: '#94a3b8' }}>
+                        ≈ {perDayKcal} kcal · {perDayProtein}g P / Tag
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Gesamtmengen */}
+                  {ingredList.length > 0 && (
+                    <div className="px-5 py-3.5" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <p className="text-xs font-semibold mb-2" style={{ color: '#64748b' }}>
+                        Gesamtmengen – alle {menu.num_days} Tage
+                      </p>
+                      <div className="space-y-1">
+                        {ingredList.map(ing => (
+                          <div key={`${ing.name}||${ing.unit}`} className="flex items-center justify-between text-xs">
+                            <span style={{ color: '#475569' }}>{ing.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold" style={{ color: '#1e293b' }}>
+                                {Number.isInteger(ing.amount) ? ing.amount : Math.round(ing.amount * 10) / 10}{ing.unit}
+                              </span>
+                              <span style={{ color: '#94a3b8' }}>· {Math.round(ing.kcal)} kcal</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-3 mt-2 pt-2 text-xs font-bold"
+                        style={{ borderTop: '1px solid #f1f5f9', color: '#475569' }}>
+                        <span>{Math.round(totalKcal)} kcal</span>
+                        <span>{Math.round(totalProtein * 10) / 10}g P</span>
+                        <span>CHF {totalCost.toFixed(2)}</span>
+                        {menu.num_days > 1 && (
+                          <span className="ml-auto font-normal" style={{ color: '#059669' }}>
+                            ÷ {menu.num_days} = {perDayKcal} kcal/Tag
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {menu.grosse_menu_meals.length === 0 ? (
                     <div className="px-5 py-8 text-center">
                       <p className="text-xs" style={{ color: '#94a3b8' }}>
@@ -1304,10 +1226,10 @@ export default function GrosseMenusPage() {
       )}
 
       {distributeMenu && (
-        <DistributeModal
-          menu={distributeMenu}
+        <DistributeMenuModal
+          preselectedMenuId={distributeMenu.id}
           onClose={() => setDistributeMenu(null)}
-          onDistributed={() => setDistributeMenu(null)}
+          onDistributed={async () => { setDistributeMenu(null); await loadMenus() }}
         />
       )}
 
