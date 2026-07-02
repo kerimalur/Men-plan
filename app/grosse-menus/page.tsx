@@ -280,20 +280,33 @@ function LoadVorlageModal({ menu, onClose, onSaved }: {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  // per-template day multiplier, defaults to menu.num_days
+  const [days, setDays] = useState<Record<string, number>>({})
 
   useEffect(() => {
     supabase
       .from('meal_templates')
       .select('*, meal_template_items(*, foods(*))')
       .order('name')
-      .then(({ data }) => { setTemplates((data as MealTemplate[]) || []); setLoading(false) })
-  }, [])
+      .then(({ data }) => {
+        const tpls = (data as MealTemplate[]) || []
+        const defaults: Record<string, number> = {}
+        tpls.forEach(t => { defaults[t.id] = menu.num_days })
+        setDays(defaults)
+        setTemplates(tpls)
+        setLoading(false)
+      })
+  }, [menu.num_days])
 
   const filtered = templates.filter(t =>
     t.name.toLowerCase().includes(search.toLowerCase())
   )
 
+  function getDays(id: string) { return days[id] ?? menu.num_days }
+
   async function insertTemplate(tpl: MealTemplate) {
+    const multiplier = getDays(tpl.id)
+    if (multiplier < 1) return
     setSaving(tpl.id)
     try {
       const { data: meal } = await supabase
@@ -305,12 +318,12 @@ function LoadVorlageModal({ menu, onClose, onSaved }: {
       if (meal && tpl.meal_template_items.length > 0) {
         await supabase.from('grosse_menu_items').insert(
           tpl.meal_template_items.map(item => {
-            const n = calcNutrition(item.foods, item.amount * menu.num_days, item.unit)
+            const n = calcNutrition(item.foods, item.amount * multiplier, item.unit)
             return {
               menu_meal_id: meal.id,
               food_id: item.foods.id,
               food_name: item.foods.name,
-              amount: item.amount * menu.num_days,
+              amount: item.amount * multiplier,
               unit: item.unit,
               kcal: n.kcal,
               protein: n.protein,
@@ -319,7 +332,7 @@ function LoadVorlageModal({ menu, onClose, onSaved }: {
           })
         )
       }
-      toast(`"${tpl.name}" eingefügt (×${menu.num_days} Tage)`, 'success')
+      toast(`"${tpl.name}" eingefügt (×${multiplier} Tage)`, 'success')
       onSaved()
     } catch {
       toast('Fehler beim Einfügen', 'error')
@@ -342,7 +355,7 @@ function LoadVorlageModal({ menu, onClose, onSaved }: {
           <div>
             <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>Vorlage einfügen</h3>
             <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>
-              Mengen werden automatisch ×{menu.num_days} berechnet
+              Tage anpassen → Mengen werden automatisch hoch- oder runtergerechnet
             </p>
           </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
@@ -368,42 +381,75 @@ function LoadVorlageModal({ menu, onClose, onSaved }: {
               {search ? 'Keine Treffer' : 'Keine Vorlagen vorhanden'}
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {filtered.map(tpl => {
-                const totalKcal = tpl.meal_template_items.reduce((s, i) => {
-                  return s + calcNutrition(i.foods, i.amount, i.unit).kcal
-                }, 0)
-                const totalKcalMultiplied = totalKcal * menu.num_days
+                const multiplier = getDays(tpl.id)
+                const kcalPerDay = tpl.meal_template_items.reduce((s, i) =>
+                  s + calcNutrition(i.foods, i.amount, i.unit).kcal, 0)
+                const kcalTotal = kcalPerDay * multiplier
                 return (
-                  <div key={tpl.id} className="rounded-xl p-3.5"
-                    style={{ border: '1px solid #f1f5f9', background: '#f8fafc' }}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
+                  <div key={tpl.id} className="rounded-xl overflow-hidden"
+                    style={{ border: '1px solid #e2e8f0' }}>
+                    {/* Header row */}
+                    <div className="flex items-center gap-3 px-3.5 py-3"
+                      style={{ background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                      <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate" style={{ color: '#1e293b' }}>{tpl.name}</p>
-                        <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>
-                          {tpl.meal_template_items.length} Zutaten
-                          {totalKcal > 0 && ` · ${Math.round(totalKcal)} kcal/Tag → ${Math.round(totalKcalMultiplied)} kcal gesamt`}
-                        </p>
+                        {kcalPerDay > 0 && (
+                          <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>
+                            {Math.round(kcalPerDay)} kcal/Tag
+                            {multiplier > 0 && <> → <strong style={{ color: '#059669' }}>{Math.round(kcalTotal)} kcal gesamt</strong></>}
+                          </p>
+                        )}
+                      </div>
+                      {/* Days input */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => setDays(d => ({ ...d, [tpl.id]: Math.max(1, (d[tpl.id] ?? menu.num_days) - 1) }))}
+                          className="w-7 h-7 rounded-lg text-base font-bold flex items-center justify-center"
+                          style={{ background: '#f1f5f9', color: '#475569' }}>−</button>
+                        <input
+                          type="number"
+                          min="1" max="30"
+                          value={multiplier}
+                          onChange={e => setDays(d => ({ ...d, [tpl.id]: Math.max(1, Math.min(30, parseInt(e.target.value) || 1)) }))}
+                          className="w-10 text-center text-sm font-bold rounded-lg outline-none"
+                          style={{ border: '1px solid #e2e8f0', color: '#1e293b', padding: '0.25rem' }}
+                        />
+                        <button
+                          onClick={() => setDays(d => ({ ...d, [tpl.id]: Math.min(30, (d[tpl.id] ?? menu.num_days) + 1) }))}
+                          className="w-7 h-7 rounded-lg text-base font-bold flex items-center justify-center"
+                          style={{ background: '#f1f5f9', color: '#475569' }}>+</button>
+                        <span className="text-xs" style={{ color: '#94a3b8' }}>T</span>
                       </div>
                       <button
                         onClick={() => insertTemplate(tpl)}
-                        disabled={saving === tpl.id}
+                        disabled={saving === tpl.id || multiplier < 1}
                         className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-50"
                         style={{ background: '#059669' }}>
                         {saving === tpl.id ? '…' : 'Einfügen'}
                       </button>
                     </div>
+                    {/* Items preview */}
                     {tpl.meal_template_items.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {tpl.meal_template_items.map(item => (
-                          <div key={item.id} className="flex items-center justify-between text-xs"
-                            style={{ color: '#64748b' }}>
-                            <span>{item.foods.name}</span>
-                            <span style={{ color: '#94a3b8' }}>
-                              {item.amount}{item.unit} × {menu.num_days} = <strong style={{ color: '#475569' }}>{item.amount * menu.num_days}{item.unit}</strong>
-                            </span>
-                          </div>
-                        ))}
+                      <div className="px-3.5 py-2.5 space-y-1.5">
+                        {tpl.meal_template_items.map(item => {
+                          const scaled = item.amount * multiplier
+                          const changed = multiplier !== 1
+                          return (
+                            <div key={item.id} className="flex items-center justify-between text-xs"
+                              style={{ color: '#64748b' }}>
+                              <span>{item.foods.name}</span>
+                              <span>
+                                <span style={{ color: '#94a3b8' }}>{item.amount}{item.unit}/Tag</span>
+                                <span style={{ color: '#94a3b8' }}> × {multiplier} = </span>
+                                <strong style={{ color: changed ? '#059669' : '#475569' }}>
+                                  {Number.isInteger(scaled) ? scaled : Math.round(scaled * 10) / 10}{item.unit}
+                                </strong>
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
