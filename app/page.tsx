@@ -9,6 +9,7 @@ import { useSwipe } from '@/lib/useSwipe'
 import { MONTH_NAMES, DAY_NAMES } from '@/lib/dates'
 import { MEAL_TYPE_ORDER, MEAL_TYPE_COLORS, MEAL_TYPE_LABELS } from '@/lib/mealTypes'
 import { useToast } from '@/components/Toast'
+import DistributeMenuModal from '@/components/DistributeMenuModal'
 
 function greeting() {
   const h = new Date().getHours()
@@ -50,6 +51,7 @@ export default function Dashboard() {
   const [meals, setMeals]   = useState<Meal[]>([])
   const [marker, setMarker] = useState<DayMarker | null>(null)
   const [goals, setGoals]   = useState({ kcal: 2000, protein: 150, kosten: 20 })
+  const [showDistribute, setShowDistribute] = useState(false)
 
   useSwipe({
     onSwipeLeft:  () => router.push(`/tag/${todayStr}`),
@@ -184,8 +186,17 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Distribute large menu quick action */}
+      <button
+        onClick={() => setShowDistribute(true)}
+        className="w-full mt-4 rounded-xl px-4 py-3.5 text-sm font-semibold flex items-center justify-between transition-all"
+        style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
+        <span>🍲 Großes Menü verteilen</span>
+        <span style={{ color: '#16a34a' }}>→</span>
+      </button>
+
       {/* Quick links */}
-      <div className="grid grid-cols-3 gap-3 mt-4">
+      <div className="grid grid-cols-3 gap-3 mt-3">
         {[
           { href: '/kalender', label: 'Wochenplanung', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
           { href: '/einkaufsliste', label: 'Einkaufsliste', bg: '#f0fdf4', color: '#166534', border: '#dcfce7' },
@@ -198,6 +209,13 @@ export default function Dashboard() {
           </Link>
         ))}
       </div>
+
+      {showDistribute && (
+        <DistributeMenuModal
+          onClose={() => setShowDistribute(false)}
+          onDistributed={() => setShowDistribute(false)}
+        />
+      )}
     </div>
   )
 }

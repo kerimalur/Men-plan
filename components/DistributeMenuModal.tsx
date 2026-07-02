@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { toDateStr } from '@/lib/dates'
+import { toDateStr, MONTH_NAMES, DAY_SHORT } from '@/lib/dates'
 import { useToast } from '@/components/Toast'
 
 interface GrossesMenuPreview {
@@ -32,7 +32,6 @@ interface GrossesMenuFull extends GrossesMenuPreview {
   grosse_menu_meals: GrossesMenuMahlzeitFull[]
 }
 
-const DAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 const MONTH_SHORT = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
 
 export default function DistributeMenuModal({
@@ -49,6 +48,20 @@ export default function DistributeMenuModal({
   const [selectedMenuId, setSelectedMenuId] = useState(preselectedMenuId || '')
   const [startDate, setStartDate] = useState(toDateStr(new Date()))
   const [distributing, setDistributing] = useState(false)
+  const [calAnchor, setCalAnchor] = useState(new Date())
+
+  const todayStr = toDateStr(new Date())
+  const calYear = calAnchor.getFullYear()
+  const calMonth = calAnchor.getMonth()
+
+  // Build Monday-first calendar cells
+  const firstDay = new Date(calYear, calMonth, 1)
+  const lastDay = new Date(calYear, calMonth + 1, 0)
+  let startOff = firstDay.getDay()
+  startOff = startOff === 0 ? 6 : startOff - 1
+  const calCells: (Date | null)[] = []
+  for (let i = 0; i < startOff; i++) calCells.push(null)
+  for (let i = 1; i <= lastDay.getDate(); i++) calCells.push(new Date(calYear, calMonth, i))
 
   useEffect(() => {
     supabase
@@ -154,7 +167,13 @@ export default function DistributeMenuModal({
           .eq('id', planId)
       }
 
-      toast(`"${menu.name}" auf ${menu.num_days} Tage verteilt`, 'success')
+      // Track distribution (best effort – table may not exist yet)
+      const { error: _trackErr } = await supabase.from('menu_distribution_log').insert(
+        dates.map(date => ({ menu_id: selectedMenuId, date }))
+      )
+      void _trackErr
+
+      toast(`"${menu.name}" auf ${menu.num_days} Tag${menu.num_days > 1 ? 'e' : ''} verteilt`, 'success')
       onDistributed()
     } catch {
       toast('Fehler beim Verteilen', 'error')
@@ -163,6 +182,7 @@ export default function DistributeMenuModal({
   }
 
   const previewDates = selectedMeta ? getPreviewDates(selectedMeta.num_days) : []
+  const previewSet = new Set(previewDates)
 
   return (
     <div
@@ -170,7 +190,7 @@ export default function DistributeMenuModal({
       style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}
     >
       <div
-        className="w-full max-w-sm rounded-2xl overflow-hidden shadow-xl"
+        className="w-full max-w-sm rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto"
         style={{ background: 'white', border: '1px solid #e2e8f0' }}
       >
         <div
@@ -226,43 +246,79 @@ export default function DistributeMenuModal({
             </div>
           )}
 
+          {/* Mini calendar */}
           <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Startdatum</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-              style={{ border: '1px solid #e2e8f0', color: '#1e293b' }}
-            />
+            <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>Startdatum wählen</p>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e2e8f0' }}>
+              {/* Month nav */}
+              <div className="flex items-center justify-between px-3 py-2.5"
+                style={{ background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                <button
+                  onClick={() => setCalAnchor(new Date(calYear, calMonth - 1, 1))}
+                  className="w-6 h-6 flex items-center justify-center rounded-lg font-bold"
+                  style={{ background: '#f1f5f9', color: '#475569' }}>&#8249;</button>
+                <span className="text-xs font-bold" style={{ color: '#1e293b' }}>
+                  {MONTH_NAMES[calMonth]} {calYear}
+                </span>
+                <button
+                  onClick={() => setCalAnchor(new Date(calYear, calMonth + 1, 1))}
+                  className="w-6 h-6 flex items-center justify-center rounded-lg font-bold"
+                  style={{ background: '#f1f5f9', color: '#475569' }}>&#8250;</button>
+              </div>
+              {/* Day headers */}
+              <div className="grid grid-cols-7 px-2 pt-2">
+                {DAY_SHORT.map(d => (
+                  <div key={d} className="text-center text-[10px] font-bold uppercase pb-1"
+                    style={{ color: '#94a3b8' }}>{d}</div>
+                ))}
+              </div>
+              {/* Day cells */}
+              <div className="grid grid-cols-7 gap-0.5 px-2 pb-2">
+                {calCells.map((day, i) => {
+                  if (!day) return <div key={i} />
+                  const ds = toDateStr(day)
+                  const isStart = ds === startDate
+                  const isInRange = !isStart && previewSet.has(ds)
+                  const isToday = ds === todayStr
+                  return (
+                    <button key={i} onClick={() => setStartDate(ds)}
+                      className="text-xs py-1.5 rounded-lg w-full transition-colors"
+                      style={{
+                        background: isStart ? '#059669' : isInRange ? '#dcfce7' : isToday ? '#eef2ff' : 'transparent',
+                        color: isStart ? 'white' : isInRange ? '#166534' : isToday ? '#4f46e5' : '#475569',
+                        fontWeight: isStart || isToday ? '700' : '400',
+                      }}>
+                      {day.getDate()}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           </div>
 
           {previewDates.length > 0 && (
             <div>
-              <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>
-                Wird verteilt auf {previewDates.length} Tage
+              <p className="text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>
+                Auf {previewDates.length} Tag{previewDates.length > 1 ? 'e' : ''} verteilt
               </p>
-              <div className="space-y-1.5">
-                {previewDates.map((d, i) => {
+              <div className="space-y-1">
+                {previewDates.slice(0, 7).map((d, i) => {
                   const dateObj = new Date(d + 'T12:00:00')
+                  const dow = dateObj.getDay()
                   return (
-                    <div
-                      key={d}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg"
-                      style={{ background: '#f8fafc', border: '1px solid #f1f5f9' }}
-                    >
-                      <span
-                        className="text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full"
-                        style={{ background: '#eef2ff', color: '#4f46e5' }}
-                      >
-                        {i + 1}
-                      </span>
+                    <div key={d} className="flex items-center gap-2 px-2 py-1.5 rounded-lg"
+                      style={{ background: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                      <span className="text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full shrink-0"
+                        style={{ background: '#eef2ff', color: '#4f46e5' }}>{i + 1}</span>
                       <span className="text-xs" style={{ color: '#475569' }}>
-                        {DAY_SHORT[dateObj.getDay()]}, {dateObj.getDate()}. {MONTH_SHORT[dateObj.getMonth()]}
+                        {DAY_SHORT[dow === 0 ? 6 : dow - 1]}, {dateObj.getDate()}. {MONTH_SHORT[dateObj.getMonth()]}
                       </span>
                     </div>
                   )
                 })}
+                {previewDates.length > 7 && (
+                  <p className="text-xs px-2" style={{ color: '#94a3b8' }}>+{previewDates.length - 7} weitere…</p>
+                )}
               </div>
             </div>
           )}

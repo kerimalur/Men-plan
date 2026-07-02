@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { calcNutrition } from '@/lib/calculations'
 import { MEAL_TYPE_LABELS, MEAL_TYPE_ORDER } from '@/lib/mealTypes'
-import { toDateStr } from '@/lib/dates'
+import { toDateStr, getMondayOfWeek } from '@/lib/dates'
 import { useToast } from '@/components/Toast'
 import type { Food } from '@/components/FoodSearch'
 
@@ -979,16 +979,39 @@ export default function GrosseMenusPage() {
   const [editingMeal, setEditingMeal] = useState<GrossesMenuMahlzeit | null>(null)
   const [loadingVorlageTo, setLoadingVorlageTo] = useState<GrossesMenu | null>(null)
   const [distributeMenu, setDistributeMenu] = useState<GrossesMenu | null>(null)
+  const [distStats, setDistStats] = useState<Record<string, { thisWeek: number; nextWeek: number }>>({})
 
   useEffect(() => { loadMenus() }, [])
 
+  async function loadDistStats() {
+    const today = new Date()
+    const monday = getMondayOfWeek(today)
+    const thisWeekStart = toDateStr(monday)
+    const thisWeekEnd = toDateStr(new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000))
+    const nextMonday = new Date(monday.getTime() + 7 * 24 * 60 * 60 * 1000)
+    const nextWeekEnd = toDateStr(new Date(nextMonday.getTime() + 6 * 24 * 60 * 60 * 1000))
+    const { data } = await supabase
+      .from('menu_distribution_log')
+      .select('menu_id, date')
+      .gte('date', thisWeekStart)
+      .lte('date', nextWeekEnd)
+    if (!data) return
+    const stats: Record<string, { thisWeek: number; nextWeek: number }> = {}
+    for (const row of data) {
+      if (!stats[row.menu_id]) stats[row.menu_id] = { thisWeek: 0, nextWeek: 0 }
+      if (row.date <= thisWeekEnd) stats[row.menu_id].thisWeek++
+      else stats[row.menu_id].nextWeek++
+    }
+    setDistStats(stats)
+  }
+
   async function loadMenus() {
     setLoading(true)
-    const { data } = await supabase
-      .from('grosse_menus')
-      .select('*, grosse_menu_meals(*, grosse_menu_items(*))')
-      .order('created_at', { ascending: false })
-    setMenus((data as GrossesMenu[]) || [])
+    const [menuRes] = await Promise.all([
+      supabase.from('grosse_menus').select('*, grosse_menu_meals(*, grosse_menu_items(*))').order('created_at', { ascending: false }),
+      loadDistStats(),
+    ])
+    setMenus((menuRes.data as GrossesMenu[]) || [])
     setLoading(false)
   }
 
@@ -1144,6 +1167,13 @@ export default function GrosseMenusPage() {
                     {menu.grosse_menu_meals.length} Mahlzeit{menu.grosse_menu_meals.length !== 1 ? 'en' : ''}
                     {perDayKcal > 0 ? ` · ≈ ${perDayKcal} kcal/Tag · ${perDayProtein}g P/Tag` : ' · Noch keine Zutaten'}
                   </p>
+                  {(distStats[menu.id]?.thisWeek > 0 || distStats[menu.id]?.nextWeek > 0) && (
+                    <p className="text-xs mt-1 font-semibold" style={{ color: '#059669' }}>
+                      {distStats[menu.id].thisWeek > 0 ? `${distStats[menu.id].thisWeek}× diese Woche` : ''}
+                      {distStats[menu.id].thisWeek > 0 && distStats[menu.id].nextWeek > 0 ? ' · ' : ''}
+                      {distStats[menu.id].nextWeek > 0 ? `${distStats[menu.id].nextWeek}× nächste Woche` : ''}
+                    </p>
+                  )}
                 </div>
                 <span className="ml-3 shrink-0 text-lg" style={{
                   color: '#94a3b8',
