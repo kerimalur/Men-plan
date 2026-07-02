@@ -13,7 +13,7 @@ import MealModal from '@/components/MealModal'
 import CopyMealModal from '@/components/CopyMealModal'
 import type { ExistingMeal } from '@/components/MealModal'
 
-interface MealItem { id: string; food_id?: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }
+interface MealItem { id: string; food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }
 interface Meal     { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number; eaten: boolean; meal_items: MealItem[] }
 interface Plan     { id: string; kcal_total: number; protein_total: number; cost_total: number }
 interface WeekPlan { date: string; kcal_total: number; protein_total: number; cost_total: number }
