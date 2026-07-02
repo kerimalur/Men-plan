@@ -517,6 +517,9 @@ export default function VorlagenPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [newCatName, setNewCatName] = useState('')
   const [savingCat, setSavingCat] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [kcalMin, setKcalMin] = useState('')
+  const [kcalMax, setKcalMax] = useState('')
 
   useEffect(() => { load() }, [])
 
@@ -567,10 +570,21 @@ export default function VorlagenPage() {
     await load()
   }
 
-  // Filter templates by active category
-  const visibleTemplates = activeCategory
-    ? templates.filter(t => t.category === activeCategory)
-    : templates
+  const visibleTemplates = templates.filter(t => {
+    if (activeCategory && t.category !== activeCategory) return false
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      const nameMatch = t.name.toLowerCase().includes(q)
+      const foodMatch = t.meal_template_items?.some(ti => ti.foods?.name?.toLowerCase().includes(q))
+      if (!nameMatch && !foodMatch) return false
+    }
+    if (kcalMin || kcalMax) {
+      const total = sumItems((t.meal_template_items || []).map(ti => calcNutrition(ti.foods, ti.amount, ti.unit))).kcal
+      if (kcalMin && total < parseFloat(kcalMin)) return false
+      if (kcalMax && total > parseFloat(kcalMax)) return false
+    }
+    return true
+  })
 
   const grouped = (['fruehstueck', 'hauptmahlzeit', 'snack'] as const).reduce<Record<string, Template[]>>((acc, type) => {
     acc[type] = visibleTemplates.filter(t => t.meal_type === type)
@@ -638,6 +652,40 @@ export default function VorlagenPage() {
               {cat.name}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Search + kcal filter (meal tab only) */}
+      {!loading && activeTab === 'meal' && (
+        <div className="space-y-2 mb-4">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Vorlage oder Zutat suchen…"
+            className="w-full text-sm rounded-xl px-3 py-2 outline-none"
+            style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+          />
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={kcalMin}
+              onChange={e => setKcalMin(e.target.value)}
+              placeholder="Min kcal"
+              min="0"
+              className="flex-1 text-sm rounded-xl px-3 py-2 outline-none"
+              style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+            />
+            <input
+              type="number"
+              value={kcalMax}
+              onChange={e => setKcalMax(e.target.value)}
+              placeholder="Max kcal"
+              min="0"
+              className="flex-1 text-sm rounded-xl px-3 py-2 outline-none"
+              style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+            />
+          </div>
         </div>
       )}
 

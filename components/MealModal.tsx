@@ -47,6 +47,69 @@ interface Template {
   }>
 }
 
+function TemplatePicker({ templates, onApply }: { templates: Template[]; onApply: (t: Template) => void }) {
+  const [filter, setFilter] = useState('')
+  const [kcalMin, setKcalMin] = useState('')
+  const [kcalMax, setKcalMax] = useState('')
+  const filtered = templates.filter(t => {
+    if (filter) {
+      const q = filter.toLowerCase()
+      if (!t.name.toLowerCase().includes(q) && !t.meal_template_items?.some(ti => ti.foods?.name?.toLowerCase().includes(q))) return false
+    }
+    if (kcalMin || kcalMax) {
+      const total = sumItems((t.meal_template_items || []).map(ti => calcNutrition(ti.foods, ti.amount, ti.unit))).kcal
+      if (kcalMin && total < parseFloat(kcalMin)) return false
+      if (kcalMax && total > parseFloat(kcalMax)) return false
+    }
+    return true
+  })
+  return (
+    <div className="px-6 py-3" style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+      <input
+        type="text"
+        value={filter}
+        onChange={e => setFilter(e.target.value)}
+        placeholder="Vorlage suchen…"
+        className="w-full mb-2 text-sm rounded-lg px-3 py-2 outline-none"
+        style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+      />
+      <div className="flex gap-2 mb-2">
+        <input type="number" value={kcalMin} onChange={e => setKcalMin(e.target.value)}
+          placeholder="Min kcal" min="0"
+          className="flex-1 text-sm rounded-lg px-3 py-2 outline-none"
+          style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }} />
+        <input type="number" value={kcalMax} onChange={e => setKcalMax(e.target.value)}
+          placeholder="Max kcal" min="0"
+          className="flex-1 text-sm rounded-lg px-3 py-2 outline-none"
+          style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }} />
+      </div>
+      <div className="space-y-1 max-h-48 overflow-y-auto">
+        {filtered.length === 0 && <p className="text-xs py-2 text-center" style={{ color: '#94a3b8' }}>Keine Vorlagen gefunden.</p>}
+        {filtered.map(t => {
+          const kcal = Math.round(sumItems((t.meal_template_items || []).map(ti => calcNutrition(ti.foods, ti.amount, ti.unit))).kcal)
+          return (
+            <button key={t.id} onClick={() => onApply(t)}
+              className="w-full text-left px-3 py-2 text-sm rounded-lg transition-colors"
+              style={{ background: 'transparent', color: '#1e293b' }}
+              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#f1f5f9')}
+              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}>
+              {t.name}
+              <span className="text-xs ml-2" style={{ color: '#64748b' }}>{kcal} kcal · {t.meal_template_items?.length} Zutaten</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export interface ExistingMeal {
+  id: string
+  name: string
+  meal_type: string
+  items: { food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }[]
+}
+
 interface Props {
   mealType: string
   onClose: () => void
@@ -58,12 +121,19 @@ interface Props {
     templateName: string
     mealType: string
     customFoods?: Item[]
+    existingMealId?: string
   }) => void
+  existingMeal?: ExistingMeal
 }
 
-export default function MealModal({ mealType, onClose, onSave }: Props) {
-  const [mealName, setMealName] = useState('')
-  const [items, setItems] = useState<Item[]>([])
+export default function MealModal({ mealType, onClose, onSave, existingMeal }: Props) {
+  const [mealName, setMealName] = useState(existingMeal?.name || '')
+  const [items, setItems] = useState<Item[]>(
+    existingMeal?.items.map(i => ({
+      food_id: i.food_id, food_name: i.food_name, amount: i.amount,
+      unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost,
+    })) || []
+  )
 
   // Mode: 'search' for DB foods, 'custom' for manual entry, 'quick' for kcal/protein/price only
   const [addMode, setAddMode] = useState<'search' | 'custom' | 'quick'>('search')
@@ -253,7 +323,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
   function handleFinishSave() {
     if (!mealName || items.length === 0) return
     const customFoods = items.filter(i => i.isCustom)
-    const data = { mealName, items, totals, saveAsTemplate, templateName, mealType, customFoods }
+    const data = { mealName, items, totals, saveAsTemplate, templateName, mealType, customFoods, existingMealId: existingMeal?.id }
     if (customFoods.length > 0) {
       setPendingSaveData(data)
       setShowSavePrompt(true)
@@ -362,7 +432,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
           style={{ borderBottom: '1px solid #f1f5f9' }}
         >
           <h2 className="font-semibold text-sm" style={{ color: '#1e293b' }}>
-            {MEAL_TYPE_LABELS[mealType]} hinzufügen
+            {existingMeal ? `${MEAL_TYPE_LABELS[mealType]} bearbeiten` : `${MEAL_TYPE_LABELS[mealType]} hinzufügen`}
           </h2>
           {templates.length > 0 && (
             <button
@@ -377,29 +447,7 @@ export default function MealModal({ mealType, onClose, onSave }: Props) {
 
         {/* Template picker */}
         {showTemplates && (
-          <div
-            className="px-6 py-3"
-            style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
-          >
-            <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>Vorlage auswählen</p>
-            <div className="space-y-1">
-              {templates.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => applyTemplate(t)}
-                  className="w-full text-left px-3 py-2 text-sm rounded-lg transition-colors"
-                  style={{ background: 'transparent', color: '#1e293b' }}
-                  onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#f1f5f9')}
-                  onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-                >
-                  {t.name}
-                  <span className="text-xs ml-2" style={{ color: '#64748b' }}>
-                    {t.meal_template_items?.length} Zutaten
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <TemplatePicker templates={templates} onApply={applyTemplate} />
         )}
 
         <div className="p-6 space-y-5">

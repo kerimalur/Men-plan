@@ -11,9 +11,10 @@ import { MEAL_TYPE_ORDER, MEAL_TYPE_META } from '@/lib/mealTypes'
 import { useToast } from '@/components/Toast'
 import MealModal from '@/components/MealModal'
 import CopyMealModal from '@/components/CopyMealModal'
+import type { ExistingMeal } from '@/components/MealModal'
 
 interface MealItem { id: string; food_id?: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number }
-interface Meal     { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number; meal_items: MealItem[] }
+interface Meal     { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number; eaten: boolean; meal_items: MealItem[] }
 interface Plan     { id: string; kcal_total: number; protein_total: number; cost_total: number }
 interface WeekPlan { date: string; kcal_total: number; protein_total: number; cost_total: number }
 
@@ -38,6 +39,7 @@ export default function TagPage() {
   const [editingItemId, setEditingItemId]       = useState<string | null>(null)
   const [editingItemAmount, setEditingItemAmount] = useState('')
   const [copyingMeal, setCopyingMeal] = useState<Meal | null>(null)
+  const [editingMeal, setEditingMeal] = useState<ExistingMeal | null>(null)
   const [savingTemplate, setSavingTemplate] = useState<'day' | 'week' | null>(null)
   const [templateName, setTemplateName] = useState('')
   const [templateSaving, setTemplateSaving] = useState(false)
@@ -83,18 +85,28 @@ export default function TagPage() {
     await supabase.from('meal_plans').update({ kcal_total: t.kcal, protein_total: t.protein, cost_total: t.cost }).eq('id', planId)
   }
 
-  async function handleSave({ mealName, items, totals, saveAsTemplate, templateName, mealType }: {
+  async function handleSave({ mealName, items, totals, saveAsTemplate, templateName, mealType, existingMealId }: {
     mealName: string; items: { food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; cost: number; isCustom?: boolean }[];
-    totals: { kcal: number; protein: number; cost: number }; saveAsTemplate: boolean; templateName: string; mealType: string
+    totals: { kcal: number; protein: number; cost: number }; saveAsTemplate: boolean; templateName: string; mealType: string; existingMealId?: string
   }) {
     let cur = plan
     if (!cur) {
       const { data } = await supabase.from('meal_plans').insert({ date: datum, kcal_total: 0, protein_total: 0, cost_total: 0 }).select().single()
       cur = data
     }
-    const { data: meal } = await supabase.from('meals').insert({ plan_id: cur!.id, meal_type: mealType, name: mealName, kcal_total: totals.kcal, protein_total: totals.protein, cost_total: totals.cost }).select().single()
+
+    let mealId: string
+    if (existingMealId) {
+      await supabase.from('meal_items').delete().eq('meal_id', existingMealId)
+      await supabase.from('meals').update({ name: mealName, kcal_total: totals.kcal, protein_total: totals.protein, cost_total: totals.cost }).eq('id', existingMealId)
+      mealId = existingMealId
+    } else {
+      const { data: meal } = await supabase.from('meals').insert({ plan_id: cur!.id, meal_type: mealType, name: mealName, kcal_total: totals.kcal, protein_total: totals.protein, cost_total: totals.cost }).select().single()
+      mealId = meal.id
+    }
+
     await supabase.from('meal_items').insert(items.map(item => ({
-      meal_id: meal.id, food_id: item.food_id, food_name: item.food_name,
+      meal_id: mealId, food_id: item.food_id, food_name: item.food_name,
       amount: item.amount, unit: item.unit, kcal: item.kcal, protein: item.protein, cost: item.cost,
     })))
     if (saveAsTemplate && templateName) {
@@ -105,8 +117,11 @@ export default function TagPage() {
         await supabase.from('meal_template_items').insert(templateItems.map(item => ({ template_id: tmpl.id, food_id: item.food_id, amount: item.amount, unit: item.unit })))
       }
     }
-    await recalc(cur!.id, [...meals, { kcal_total: totals.kcal, protein_total: totals.protein, cost_total: totals.cost } as Meal])
-    setAddingFor(null); await loadData()
+    const updatedMeals = existingMealId
+      ? meals.map(m => m.id === existingMealId ? { ...m, kcal_total: totals.kcal, protein_total: totals.protein, cost_total: totals.cost } : m)
+      : [...meals, { kcal_total: totals.kcal, protein_total: totals.protein, cost_total: totals.cost } as Meal]
+    await recalc(cur!.id, updatedMeals)
+    setAddingFor(null); setEditingMeal(null); await loadData()
   }
 
   async function deleteMeal(id: string) {
@@ -133,6 +148,13 @@ export default function TagPage() {
     await recalc(plan.id, [...meals, { kcal_total: meal.kcal_total, protein_total: meal.protein_total, cost_total: meal.cost_total } as Meal])
     await loadData()
     toast(`"${meal.name}" dupliziert`, 'success')
+  }
+
+  async function toggleEaten(mealId: string) {
+    const meal = meals.find(m => m.id === mealId)
+    if (!meal) return
+    const { error } = await supabase.from('meals').update({ eaten: !meal.eaten }).eq('id', mealId)
+    if (!error) setMeals(prev => prev.map(m => m.id === mealId ? { ...m, eaten: !m.eaten } : m))
   }
 
   async function deleteItem(meal: Meal, itemId: string) {
@@ -475,11 +497,26 @@ export default function TagPage() {
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 py-3.5" style={{ background: bg }}>
                     <span className="text-sm font-bold" style={{ color }}>{label}</span>
-                    <button onClick={() => setAddingFor(key)}
-                      className="text-xs font-bold px-3 py-1 rounded-lg transition-all"
-                      style={{ background: 'white', color, border: `1px solid ${border}` }}>
-                      + Hinzufügen
-                    </button>
+                    {sectionMeals.length > 0 ? (
+                      <button onClick={() => {
+                        const meal = sectionMeals[0]
+                        setEditingMeal({
+                          id: meal.id, name: meal.name, meal_type: meal.meal_type,
+                          items: meal.meal_items.map(i => ({ food_id: i.food_id, food_name: i.food_name, amount: i.amount, unit: i.unit, kcal: i.kcal, protein: i.protein, cost: i.cost }))
+                        })
+                        setAddingFor(key)
+                      }}
+                        className="text-xs font-bold px-3 py-1 rounded-lg transition-all"
+                        style={{ background: 'white', color, border: `1px solid ${border}` }}>
+                        Bearbeiten
+                      </button>
+                    ) : (
+                      <button onClick={() => { setEditingMeal(null); setAddingFor(key) }}
+                        className="text-xs font-bold px-3 py-1 rounded-lg transition-all"
+                        style={{ background: 'white', color, border: `1px solid ${border}` }}>
+                        + Hinzufügen
+                      </button>
+                    )}
                   </div>
 
                   {/* Content */}
@@ -488,9 +525,18 @@ export default function TagPage() {
                       <p className="px-5 py-3.5 text-xs" style={{ color: '#cbd5e1' }}>Noch nichts geplant</p>
                     )}
                     {sectionMeals.map(meal => (
-                      <div key={meal.id} className="px-5 py-4" style={{ borderBottom: '1px solid #f8fafc' }}>
+                      <div key={meal.id} className="px-5 py-4" style={{ borderBottom: '1px solid #f8fafc', opacity: meal.eaten ? 0.6 : 1 }}>
                         <div className="flex items-center justify-between mb-2.5">
-                          <span className="text-sm font-bold" style={{ color: '#1e293b' }}>{meal.name}</span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <button onClick={() => toggleEaten(meal.id)}
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all shrink-0"
+                              style={meal.eaten
+                                ? { background: '#16a34a', color: 'white' }
+                                : { background: '#f1f5f9', color: '#cbd5e1', border: '1.5px solid #e2e8f0' }}>
+                              {meal.eaten ? '✓' : ''}
+                            </button>
+                            <span className="text-sm font-bold" style={{ color: meal.eaten ? '#94a3b8' : '#1e293b', textDecoration: meal.eaten ? 'line-through' : 'none' }}>{meal.name}</span>
+                          </div>
                           <div className="flex gap-3">
                             <button onClick={() => setCopyingMeal(meal)}
                               className="text-xs transition-all" style={{ color: '#059669' }}>Kopieren</button>
@@ -561,7 +607,7 @@ export default function TagPage() {
       )}
 
       {addingFor && (
-        <MealModal mealType={addingFor} onClose={() => setAddingFor(null)} onSave={handleSave} />
+        <MealModal mealType={addingFor} onClose={() => { setAddingFor(null); setEditingMeal(null) }} onSave={handleSave} existingMeal={editingMeal || undefined} />
       )}
 
       {copyingMeal && (

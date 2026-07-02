@@ -70,6 +70,9 @@ export default function LoadTemplateModal({ dateStr, onClose, onLoaded }: {
   const [applying, setApplying] = useState<string | null>(null)
   const [tab, setTab] = useState<'meal' | 'day' | 'week'>('meal')
   const [mealSlots, setMealSlots] = useState<Record<string, string>>({})
+  const [searchQuery, setSearchQuery] = useState('')
+  const [kcalMin, setKcalMin] = useState('')
+  const [kcalMax, setKcalMax] = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -172,6 +175,21 @@ export default function LoadTemplateModal({ dateStr, onClose, onLoaded }: {
     setApplying(null); onLoaded()
   }
 
+  const filteredMealTemplates = mealTemplates.filter(tmpl => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      const nameMatch = tmpl.name.toLowerCase().includes(q)
+      const foodMatch = tmpl.meal_template_items?.some(ti => ti.foods?.name?.toLowerCase().includes(q))
+      if (!nameMatch && !foodMatch) return false
+    }
+    if (kcalMin || kcalMax) {
+      const total = sumItems((tmpl.meal_template_items || []).map(ti => calcNutrition(ti.foods, ti.amount, ti.unit))).kcal
+      if (kcalMin && total < parseFloat(kcalMin)) return false
+      if (kcalMax && total > parseFloat(kcalMax)) return false
+    }
+    return true
+  })
+
   const dayTemplates = templates.filter(t => t.type === 'day')
   const weekTemplates = templates.filter(t => t.type === 'week')
   const targetLabel = new Date(dateStr + 'T12:00:00').toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'short' })
@@ -192,7 +210,7 @@ export default function LoadTemplateModal({ dateStr, onClose, onLoaded }: {
 
         <div className="flex gap-1 p-1 mx-5 mt-3 rounded-xl" style={{ background: '#f1f5f9' }}>
           {([
-            ['meal', 'Mahlzeiten', mealTemplates.length] as const,
+            ['meal', 'Mahlzeiten', filteredMealTemplates.length] as const,
             ['day',  'Tagesplan',  dayTemplates.length] as const,
             ['week', 'Wochenplan', weekTemplates.length] as const,
           ]).map(([key, label, count]) => (
@@ -208,9 +226,40 @@ export default function LoadTemplateModal({ dateStr, onClose, onLoaded }: {
           {loading && <p className="text-center text-sm py-8" style={{ color: '#94a3b8' }}>Laden…</p>}
 
           {!loading && tab === 'meal' && (
-            mealTemplates.length === 0
-              ? <p className="text-center text-sm py-8" style={{ color: '#94a3b8' }}>Keine Mahlzeit-Vorlagen vorhanden.</p>
-              : mealTemplates.map(tmpl => {
+            <>
+              <div className="space-y-2 mb-3">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Vorlage oder Zutat suchen…"
+                  className="w-full text-sm rounded-xl px-3 py-2 outline-none"
+                  style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={kcalMin}
+                    onChange={e => setKcalMin(e.target.value)}
+                    placeholder="Min kcal"
+                    min="0"
+                    className="flex-1 text-sm rounded-xl px-3 py-2 outline-none"
+                    style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+                  />
+                  <input
+                    type="number"
+                    value={kcalMax}
+                    onChange={e => setKcalMax(e.target.value)}
+                    placeholder="Max kcal"
+                    min="0"
+                    className="flex-1 text-sm rounded-xl px-3 py-2 outline-none"
+                    style={{ background: 'white', border: '1px solid #e2e8f0', color: '#1e293b' }}
+                  />
+                </div>
+              </div>
+              {filteredMealTemplates.length === 0
+              ? <p className="text-center text-sm py-8" style={{ color: '#94a3b8' }}>Keine Mahlzeit-Vorlagen gefunden.</p>
+              : filteredMealTemplates.map(tmpl => {
                   const items = tmpl.meal_template_items || []
                   const totals = sumItems(items.map(ti => calcNutrition(ti.foods, ti.amount, ti.unit)))
                   const slot = mealSlots[tmpl.id] || defaultSlot(tmpl.meal_type)
@@ -245,6 +294,8 @@ export default function LoadTemplateModal({ dateStr, onClose, onLoaded }: {
                     </div>
                   )
                 })
+              }
+            </>
           )}
 
           {!loading && tab === 'day' && (
