@@ -180,26 +180,43 @@ CREATE OR REPLACE FUNCTION portion_factor(p_amount NUMERIC, p_unit TEXT) RETURNS
   END;
 $$ LANGUAGE sql IMMUTABLE;
 
+-- Die Werte pro Portion einmal ausrechnen und dann setzen -- alle Toepfe
+-- desselben Rezepts teilen sie ohnehin.
+--
+-- Ein frueherer Entwurf machte das ueber LATERAL in der FROM-Liste des UPDATE
+-- und referenzierte dort die Zieltabelle. Das ist in Postgres nicht erlaubt
+-- (ERROR 42P10) und liess jedes INSERT auf recipe_items scheitern. Migration
+-- 0009 korrigiert bereits ausgerollte Datenbanken; hier steht die richtige
+-- Fassung, damit eine frische Datenbank den Fehler gar nicht erst bekommt.
+--
+-- Gerundet wird wie in calcNutrition(): jede Position auf eine
+-- Nachkommastelle, Kosten auf drei.
 CREATE OR REPLACE FUNCTION recalc_planned_batches_for_recipe(p_recipe_id UUID) RETURNS VOID AS $$
+DECLARE
+  v_kcal    NUMERIC;
+  v_protein NUMERIC;
+  v_carbs   NUMERIC;
+  v_fat     NUMERIC;
+  v_cost    NUMERIC;
 BEGIN
+  SELECT
+    COALESCE(ROUND(SUM(ROUND(f.calories_per_100 * portion_factor(ri.amount_per_portion, ri.unit), 1)), 1), 0),
+    COALESCE(ROUND(SUM(ROUND(f.protein_per_100  * portion_factor(ri.amount_per_portion, ri.unit), 1)), 1), 0),
+    COALESCE(ROUND(SUM(ROUND(f.carbs_per_100    * portion_factor(ri.amount_per_portion, ri.unit), 1)), 1), 0),
+    COALESCE(ROUND(SUM(ROUND(f.fat_per_100      * portion_factor(ri.amount_per_portion, ri.unit), 1)), 1), 0),
+    COALESCE(ROUND(SUM(ROUND(f.cost_per_100     * portion_factor(ri.amount_per_portion, ri.unit), 3)), 3), 0)
+  INTO v_kcal, v_protein, v_carbs, v_fat, v_cost
+  FROM recipe_items ri
+  JOIN foods f ON f.id = ri.food_id
+  WHERE ri.recipe_id = p_recipe_id;
+
   UPDATE prep_batches pb SET
-    kcal_per_portion    = COALESCE(s.kcal, 0),
-    protein_per_portion = COALESCE(s.protein, 0),
-    carbs_per_portion   = COALESCE(s.carbs, 0),
-    fat_per_portion     = COALESCE(s.fat, 0),
-    cost_per_portion    = COALESCE(s.cost, 0)
-  FROM prep_cycles c,
-  LATERAL (
-    SELECT
-      SUM(f.calories_per_100 * portion_factor(ri.amount_per_portion, ri.unit)) AS kcal,
-      SUM(f.protein_per_100  * portion_factor(ri.amount_per_portion, ri.unit)) AS protein,
-      SUM(f.carbs_per_100    * portion_factor(ri.amount_per_portion, ri.unit)) AS carbs,
-      SUM(f.fat_per_100      * portion_factor(ri.amount_per_portion, ri.unit)) AS fat,
-      SUM(f.cost_per_100     * portion_factor(ri.amount_per_portion, ri.unit)) AS cost
-    FROM recipe_items ri
-    JOIN foods f ON f.id = ri.food_id
-    WHERE ri.recipe_id = pb.recipe_id
-  ) s
+    kcal_per_portion    = v_kcal,
+    protein_per_portion = v_protein,
+    carbs_per_portion   = v_carbs,
+    fat_per_portion     = v_fat,
+    cost_per_portion    = v_cost
+  FROM prep_cycles c
   WHERE pb.recipe_id = p_recipe_id
     AND c.id = pb.cycle_id
     AND c.status = 'geplant';

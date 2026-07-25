@@ -153,6 +153,7 @@ steht jeweils ein Verifikationsblock zum Nachprüfen.
 | `0006_recipes_migrate_data` | Vorlagen, Notizen, grosse Menüs → Rezepte |
 | `0007_prep_cycles` | Zyklen, Töpfe, Boxen + erweiterte Tagessummen |
 | `0008_shopping_aggregate` | RPC `cycle_shopping_items()` |
+| `0009_fix_planned_batch_recalc` | Korrektur an `0007`: unerlaubtes LATERAL auf die UPDATE-Zieltabelle |
 | `0010_drop_legacy_tables` | abgelöste Tabellen entfernen — **zuletzt** |
 
 Reihenfolge ist nicht optional: `0002` muss Constraints droppen, bevor es Daten
