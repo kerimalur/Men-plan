@@ -1,20 +1,100 @@
 @import "tailwindcss";
 
-body {
-  background: #f8fafc;
-  color: #1e293b;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+/* ============================================================================
+   Design-Tokens "Organic" — warmes Terrakotta / Salbei, grosse Radien.
+
+   Das ist die EINZIGE Stelle, an der Farbwerte stehen. Komponenten und Seiten
+   verwenden ausschliesslich die daraus erzeugten Tailwind-Klassen
+   (bg-surface, text-accent, rounded-card, shadow-card, font-display …).
+   Kein Hex-Wert ausserhalb dieser Datei.
+
+   Kein Dark Mode in diesem Schritt.
+   ========================================================================= */
+
+@theme {
+  /* Schriften — eingebunden per next/font/google in app/layout.tsx */
+  --font-display: var(--font-caprasimo), Georgia, serif;
+  --font-body:    var(--font-figtree), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Flächen */
+  --color-bg:             #F2EBE0;  /* Seitenhintergrund, warmer Sand */
+  --color-surface:        #FDFAF5;  /* Karten, Elfenbein */
+  --color-surface-alt:    #F7F1E7;  /* verschachtelte Blöcke, Mahlzeit-Karten */
+  --color-border:         #E8DDCE;
+  --color-border-soft:    #F0E8DC;  /* Trennlinien innerhalb von Karten */
+
+  /* Text */
+  --color-text:           #3B2E26;
+  --color-text-secondary: #6B5A4C;
+  --color-text-muted:     #9A8878;  /* Labels, Einheiten, Platzhalter */
+  --color-text-faint:     #C3B5A5;  /* leere Zustände, „—" */
+
+  /* Akzent Terrakotta */
+  --color-accent:         #C4693C;
+  --color-accent-hover:   #AE5A31;
+  --color-accent-soft:    #F2E2D6;  /* Pill-Hintergrund, aktive Tab-Fläche */
+  --color-accent-text:    #FDFAF5;
+
+  /* Salbei */
+  --color-sage:           #8A9A7B;
+  --color-sage-soft:      #E4EADD;
+
+  /* Status */
+  --color-success:        #7C9070;
+  --color-success-soft:   #E4EADD;
+  --color-warning:        #C9913F;
+  --color-warning-soft:   #F5E8D2;
+  --color-danger:         #B5503C;
+  --color-danger-soft:    #F4DED8;
+
+  /* Mahlzeit-Typen */
+  --color-meal-fruehstueck: #C89A5B;
+  --color-meal-mittagessen: #8A9A7B;
+  --color-meal-abendessen:  #A9633F;
+  --color-meal-snack:       #9C8AA0;
+
+  /* Radien */
+  --radius-card:   20px;
+  --radius-inner:  16px;
+  --radius-button: 14px;
+  --radius-pill:   999px;
+
+  /* Schatten — warm, sehr weich, nie kalt-grau */
+  --shadow-card:  0 1px 3px rgba(80, 60, 40, 0.06);
+  --shadow-float: 0 4px 16px rgba(80, 60, 40, 0.10);
 }
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+/* Caprasimo ist eine kräftige Display-Schrift: sparsam einsetzen —
+   Seitentitel, Sektionsüberschriften, grosse Kennzahlen. Nie Fliesstext.
+
+   Die Utility .font-display erzeugt Tailwind selbst aus --font-display.
+   Caprasimo gibt es nur in 400, deshalb an jeder Verwendungsstelle
+   zusätzlich font-normal setzen — sonst synthetisiert der Browser bei
+   Überschriften ein Fett, das die Schrift nicht hat. */
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: var(--radius-pill); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-faint); }
 
 /* Bottom dock spacing */
 .main-content {
   padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Touch-Ziele: durchgehend mindestens 44 px (Akzeptanzkriterium 17). */
+button, [role="button"], a.tap-target, input[type="checkbox"] + label {
+  min-height: 44px;
+}
+button.tap-inline {
+  min-height: 0;
 }
 
 @media print {

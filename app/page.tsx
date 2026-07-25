@@ -1,221 +1,215 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { loadSettings, goalColor, limitColor } from '@/lib/settings'
+import { getDayView, type DayView } from '@/lib/db/plans'
+import { setPortionConsumed, getPortionsForRange } from '@/lib/db/cycles'
+import { MEAL_TYPE_ORDER, MEAL_TYPE_LABELS, MEAL_TYPE_BG, type MealTypeKey } from '@/lib/mealTypes'
+import { loadSettings, DEFAULTS } from '@/lib/settings'
+import { toDateStr } from '@/lib/dates'
 import { useSwipe } from '@/lib/useSwipe'
-import { MONTH_NAMES, DAY_NAMES } from '@/lib/dates'
-import { MEAL_TYPE_ORDER, MEAL_TYPE_COLORS, MEAL_TYPE_LABELS } from '@/lib/mealTypes'
-import { useToast } from '@/components/Toast'
-import DistributeMenuModal from '@/components/DistributeMenuModal'
+import Card, { CardLabel } from '@/components/ui/Card'
+import Pill, { MealTypePill } from '@/components/ui/Pill'
+import Button from '@/components/ui/Button'
+import Checkbox from '@/components/ui/Checkbox'
+import StatCard, { StatCardGrid } from '@/components/ui/StatCard'
 
-function greeting() {
+function greeting(): string {
   const h = new Date().getHours()
   if (h < 11) return 'Guten Morgen'
   if (h < 17) return 'Guten Tag'
   return 'Guten Abend'
 }
 
-function ArcProgress({ value, max, size = 100, color: colorProp }: { value: number; max: number; size?: number; color?: string }) {
-  const r = size * 0.37
-  const circ = 2 * Math.PI * r
-  const pct = max > 0 ? Math.min(value / max, 1) : 0
-  const color = colorProp ?? goalColor(value, max)
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth="8" />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none"
-        stroke={color} strokeWidth="8"
-        strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)}
-        strokeLinecap="round"
-        style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(.4,0,.2,1), stroke 0.3s ease' }}
-      />
-    </svg>
-  )
-}
-
-interface Meal { id: string; meal_type: string; name: string; kcal_total: number; protein_total: number; cost_total: number }
-interface Plan { kcal_total: number; protein_total: number; cost_total: number }
-interface DayMarker { training: boolean; eingeladen: boolean }
-
-export default function Dashboard() {
-  const today = new Date()
-  const todayStr = today.toISOString().split('T')[0]
-  const todayLabel = `${DAY_NAMES[today.getDay()]}, ${today.getDate()}. ${MONTH_NAMES[today.getMonth()]} ${today.getFullYear()}`
-  const router = useRouter()
-  const { toast } = useToast()
-
-  const [plan, setPlan]     = useState<Plan | null>(null)
-  const [meals, setMeals]   = useState<Meal[]>([])
-  const [marker, setMarker] = useState<DayMarker | null>(null)
-  const [goals, setGoals]   = useState({ kcal: 2000, protein: 150, kosten: 20 })
-  const [showDistribute, setShowDistribute] = useState(false)
-
-  useSwipe({
-    onSwipeLeft:  () => router.push(`/tag/${todayStr}`),
-    onSwipeRight: () => router.push('/kalender'),
+export default function HeutePage() {
+  const [date, setDate] = useState(toDateStr(new Date()))
+  const [day, setDay] = useState<DayView | null>(null)
+  const [fridge, setFridge] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [goals, setGoals] = useState({
+    kcal: Number(DEFAULTS.kcal_ziel),
+    protein: Number(DEFAULTS.protein_ziel),
+    kosten: Number(DEFAULTS.kosten_ziel),
   })
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [planRes, settingsData, markerRes] = await Promise.all([
-          supabase.from('meal_plans').select('*').eq('date', todayStr).maybeSingle(),
-          loadSettings(),
-          supabase.from('day_markers').select('training,eingeladen').eq('date', todayStr).maybeSingle(),
-        ])
-        if (planRes.error) throw planRes.error
-        if (markerRes.error) throw markerRes.error
-        setGoals({ kcal: parseInt(settingsData.kcal_ziel) || 2000, protein: parseInt(settingsData.protein_ziel) || 150, kosten: parseInt(settingsData.kosten_ziel) || 20 })
-        setMarker(markerRes.data)
-        if (planRes.data) {
-          setPlan(planRes.data)
-          const { data, error } = await supabase.from('meals').select('*').eq('plan_id', planRes.data.id)
-          if (error) throw error
-          setMeals(data || [])
-        }
-      } catch {
-        toast('Fehler beim Laden der Dashboard-Daten', 'error')
-      }
+  // Swipe: Zeit vorwärts/rückwärts, kein Bereichswechsel.
+  useSwipe({
+    onSwipeLeft:  () => setDate(d => shiftDay(d, +1)),
+    onSwipeRight: () => setDate(d => shiftDay(d, -1)),
+  })
+
+  const load = useCallback(async () => {
+    setError(null)
+    try {
+      const today = toDateStr(new Date())
+      const [view, portions] = await Promise.all([
+        getDayView(date),
+        // Noch nicht gegessene Boxen ab heute — was im Kühlschrank steht.
+        getPortionsForRange(today, shiftDay(today, 14)),
+      ])
+      setDay(view)
+      setFridge(portions.filter(p => !p.consumed).length)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Tag konnte nicht geladen werden')
+    } finally {
+      setLoading(false)
     }
-    load()
+  }, [date])
+
+  useEffect(() => { setLoading(true); void Promise.resolve().then(load) }, [load])
+
+  useEffect(() => {
+    void Promise.resolve().then(async () => {
+      const s = await loadSettings()
+      setGoals({ kcal: Number(s.kcal_ziel), protein: Number(s.protein_ziel), kosten: Number(s.kosten_ziel) })
+    })
   }, [])
 
-  const kcal    = plan?.kcal_total    || 0
-  const protein = plan?.protein_total || 0
-  const cost    = plan?.cost_total    || 0
+  const isToday = date === toDateStr(new Date())
+  const d = new Date(`${date}T12:00:00`)
+
+  const totals = {
+    kcal:    day?.plan?.kcal_total ?? 0,
+    protein: day?.plan?.protein_total ?? 0,
+    cost:    Number(day?.plan?.cost_total ?? 0),
+  }
 
   return (
-    <div className="max-w-xl mx-auto">
-
-      {/* Header */}
-      <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>
-          {greeting()}
-        </p>
-        <h1 className="text-xl font-bold" style={{ color: '#1e293b' }}>{todayLabel}</h1>
-
-        {(marker?.training || marker?.eingeladen) && (
-          <div className="flex gap-2 mt-2">
-            {marker.training   && <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: '#dbeafe', color: '#1d4ed8' }}>Training</span>}
-            {marker.eingeladen && <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: '#ede9fe', color: '#6d28d9' }}>Eingeladen</span>}
-          </div>
-        )}
+    <div className="max-w-lg mx-auto">
+      <div className="mb-5">
+        <p className="text-sm text-text-muted">{isToday ? greeting() : 'Tagesplan'}</p>
+        <h1 className="font-display font-normal text-2xl text-text">
+          {d.toLocaleDateString('de-CH', { weekday: 'long', day: 'numeric', month: 'long' })}
+        </h1>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {[
-          { label: 'Kalorien', value: Math.round(kcal),    max: goals.kcal,    display: `${Math.round(kcal)}`, unit: 'kcal', limit: true },
-          { label: 'Protein',  value: protein,             max: goals.protein, display: `${Math.round(protein * 10) / 10}`, unit: 'g', limit: false },
-          { label: 'Kosten',   value: cost,                max: goals.kosten,  display: cost.toFixed(2), unit: 'CHF', prefix: true, limit: true },
-        ].map(s => {
-          const pct = s.max > 0 ? Math.round((s.value / s.max) * 100) : 0
-          const color = s.limit ? limitColor(s.value, s.max) : goalColor(s.value, s.max)
-          return (
-            <div key={s.label} className="rounded-2xl p-4 flex flex-col items-center"
-              style={{ background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
-              <div className="relative mb-2">
-                <ArcProgress value={s.value} max={s.max} size={80} color={color} />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xs font-bold" style={{ color: '#475569' }}>{pct}%</span>
-                </div>
-              </div>
-              <p className="text-base font-extrabold" style={{ color }}>
-                {s.prefix ? `CHF ${s.display}` : s.display}
-                {!s.prefix && <span className="text-xs font-normal ml-0.5" style={{ color: '#94a3b8' }}>{s.unit}</span>}
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: '#94a3b8' }}>
-                {s.prefix ? `/ CHF ${s.max}` : `/ ${s.max}${s.unit}`}
-              </p>
-              <p className="text-[11px] font-semibold mt-1" style={{ color: '#64748b' }}>{s.label}</p>
-            </div>
-          )
-        })}
-      </div>
+      {loading && <p className="text-sm text-center py-10 text-text-muted">Laden…</p>}
 
-      {/* Today's meals */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
-        <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: '1px solid #f1f5f9' }}>
-          <span className="text-sm font-bold" style={{ color: '#1e293b' }}>Heutiger Menüplan</span>
-          <Link href={`/tag/${todayStr}`} className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
-            style={{ background: '#f1f5f9', color: '#475569' }}>
-            Bearbeiten →
-          </Link>
-        </div>
+      {error && (
+        <Card className="text-center">
+          <p className="text-sm text-danger mb-3">{error}</p>
+          <Button variant="secondary" onClick={() => { setLoading(true); void load() }}>Erneut versuchen</Button>
+        </Card>
+      )}
 
-        {meals.length === 0 ? (
-          <div className="px-5 py-10 text-center">
-            <p className="text-sm mb-4" style={{ color: '#94a3b8' }}>Noch nichts für heute geplant.</p>
-            <Link href={`/tag/${todayStr}`}
-              className="inline-block text-sm font-semibold px-5 py-2.5 rounded-xl text-white transition-all"
-              style={{ background: '#475569' }}>
-              Jetzt planen
-            </Link>
-          </div>
-        ) : (
-          MEAL_TYPE_ORDER.map((type, i) => {
-            const meal = meals.find(m => m.meal_type === type)
-            const label = MEAL_TYPE_LABELS[type]
-            const color = MEAL_TYPE_COLORS[type]
-            return (
-              <div key={type} className="flex items-center gap-4 px-5 py-3.5"
-                style={{ borderBottom: i < MEAL_TYPE_ORDER.length - 1 ? '1px solid #f8fafc' : 'none' }}>
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
-                <span className="text-xs font-bold w-22 shrink-0" style={{ color: '#94a3b8', minWidth: '5rem' }}>
-                  {label}
+      {!loading && !error && day && (
+        <>
+          {/* Kennzahlen: horizontale Balken statt Kreisbögen */}
+          <StatCardGrid>
+            <StatCard label="Kalorien" value={totals.kcal} max={goals.kcal} unit="kcal" kind="limit" />
+            <StatCard label="Protein"  value={totals.protein} max={goals.protein} unit="g" kind="goal" />
+            <StatCard label="Kosten"   value={totals.cost} max={goals.kosten} unit="" kind="limit" decimals={2} />
+          </StatCardGrid>
+
+          {/* Restbudget */}
+          <Card className="mt-4">
+            <CardLabel>Noch offen</CardLabel>
+            <div className="flex items-baseline gap-5 mt-2">
+              <div>
+                <span className="font-display font-normal text-2xl text-text">
+                  {Math.max(0, Math.round(goals.kcal - totals.kcal))}
                 </span>
-                {meal ? (
-                  <>
-                    <span className="text-sm flex-1 truncate font-medium" style={{ color: '#1e293b' }}>{meal.name}</span>
-                    <div className="flex gap-3 shrink-0">
-                      <span className="text-xs font-semibold" style={{ color: limitColor(meal.kcal_total, goals.kcal) }}>
-                        {Math.round(meal.kcal_total)} kcal
-                      </span>
-                      <span className="text-xs" style={{ color: '#94a3b8' }}>{meal.protein_total}g P</span>
-                    </div>
-                  </>
-                ) : (
-                  <span className="text-xs" style={{ color: '#cbd5e1' }}>—</span>
-                )}
+                <span className="text-xs text-text-muted ml-1">kcal</span>
               </div>
-            )
-          })
-        )}
-      </div>
+              <div>
+                <span className="font-display font-normal text-2xl text-text">
+                  {Math.max(0, Math.round(goals.protein - totals.protein))}
+                </span>
+                <span className="text-xs text-text-muted ml-1">g Protein</span>
+              </div>
+            </div>
+            {fridge > 0 && (
+              <p className="text-xs text-sage font-semibold mt-3">
+                Noch {fridge} {fridge === 1 ? 'Portion' : 'Portionen'} im Kühlschrank
+              </p>
+            )}
+          </Card>
 
-      {/* Distribute large menu quick action */}
-      <button
-        onClick={() => setShowDistribute(true)}
-        className="w-full mt-4 rounded-xl px-4 py-3.5 text-sm font-semibold flex items-center justify-between transition-all"
-        style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
-        <span>🍲 Großes Menü verteilen</span>
-        <span style={{ color: '#16a34a' }}>→</span>
-      </button>
+          {/* Heutiger Menüplan */}
+          <Card className="mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <CardLabel>Heutiger Menüplan</CardLabel>
+              <Link href="/plan" className="tap-inline text-sm font-semibold text-accent">Öffnen</Link>
+            </div>
 
-      {/* Quick links */}
-      <div className="grid grid-cols-3 gap-3 mt-3">
-        {[
-          { href: '/kalender', label: 'Wochenplanung', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
-          { href: '/einkaufsliste', label: 'Einkaufsliste', bg: '#f0fdf4', color: '#166534', border: '#dcfce7' },
-          { href: '/grosse-menus', label: 'Große Menüs', bg: '#fefce8', color: '#854d0e', border: '#fef08a' },
-        ].map(item => (
-          <Link key={item.href} href={item.href}
-            className="rounded-xl px-4 py-3.5 text-sm font-semibold transition-all text-center"
-            style={{ background: item.bg, color: item.color, border: `1px solid ${item.border}` }}>
-            {item.label}
-          </Link>
-        ))}
-      </div>
+            <ul>
+              {MEAL_TYPE_ORDER.map(slot => {
+                const portions = day.portions.filter(p => p.meal_type === slot)
+                const meals = day.meals.filter(m => m.meal_type === slot)
+                const empty = portions.length === 0 && meals.length === 0
 
-      {showDistribute && (
-        <DistributeMenuModal
-          onClose={() => setShowDistribute(false)}
-          onDistributed={() => setShowDistribute(false)}
-        />
+                return (
+                  <li key={slot} className="border-b border-border-soft last:border-0 py-2">
+                    {empty ? (
+                      <div className="flex items-center gap-3 min-h-11">
+                        <Dot slot={slot} />
+                        <span className="w-24 shrink-0 text-xs text-text-muted">{MEAL_TYPE_LABELS[slot]}</span>
+                        <span className="flex-1 text-sm text-text-faint">—</span>
+                      </div>
+                    ) : (
+                      <>
+                        {portions.map(p => (
+                          <div key={p.id} className="flex items-center gap-3">
+                            <Dot slot={slot} />
+                            <span className="w-24 shrink-0 text-xs text-text-muted">{MEAL_TYPE_LABELS[slot]}</span>
+                            <div className="flex-1 min-w-0">
+                              <Checkbox
+                                checked={p.consumed}
+                                onChange={async v => { await setPortionConsumed(p.id, v); await load() }}
+                                label={p.prep_batches.recipes?.name ?? 'Box'}
+                                trailing={`${Math.round(p.prep_batches.kcal_per_portion)} kcal`}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        {meals.map(m => (
+                          <div key={m.id} className="flex items-center gap-3 min-h-11">
+                            <Dot slot={slot} />
+                            <span className="w-24 shrink-0 text-xs text-text-muted">{MEAL_TYPE_LABELS[slot]}</span>
+                            <span className="flex-1 text-sm text-text min-w-0">{m.name}</span>
+                            <span className="text-sm text-text-muted shrink-0">{Math.round(m.kcal_total)} kcal</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </Card>
+
+          {day.marker?.is_free && (
+            <Card className="mt-4">
+              <MealTypePill mealType="snack" label="Freier Tag" />
+              <p className="text-sm text-text-muted mt-2">
+                Kein Meal Prep eingeplant. Trag einzelne Mahlzeiten unter „Plan“ ein.
+              </p>
+            </Card>
+          )}
+
+          <div className="flex gap-2 mt-4">
+            <Link href="/prep" className="flex-1"><Button fullWidth>Prep planen</Button></Link>
+            <Link href="/einkaufsliste" className="flex-1"><Button variant="secondary" fullWidth>Einkauf</Button></Link>
+          </div>
+
+          {!isToday && (
+            <div className="mt-4 text-center">
+              <Pill variant="accent" onClick={() => setDate(toDateStr(new Date()))}>Zurück zu heute</Pill>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
+}
+
+function Dot({ slot }: { slot: MealTypeKey }) {
+  return <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${MEAL_TYPE_BG[slot]}`} />
+}
+
+function shiftDay(dateStr: string, delta: number): string {
+  const d = new Date(`${dateStr}T12:00:00`)
+  d.setDate(d.getDate() + delta)
+  return toDateStr(d)
 }

@@ -1,497 +1,343 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useSwipe } from '@/lib/useSwipe'
-import { useRouter } from 'next/navigation'
-import { getMondayOfWeek, toDateStr } from '@/lib/dates'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  listShopping, addShoppingItem, setShoppingChecked, deleteShoppingItem,
+  clearChecked, getCycleShoppingItems, syncCycleToShoppingList, shoppingKey,
+} from '@/lib/db/shopping'
+import { listCycles } from '@/lib/db/cycles'
+import type { CycleShoppingItem, PrepCycle, ShoppingItem } from '@/lib/db/types'
+import { formatAmount, roundForShopping } from '@/lib/units'
+import { useToast } from '@/components/Toast'
+import Card, { CardLabel } from '@/components/ui/Card'
+import Pill from '@/components/ui/Pill'
+import Button, { IconButton } from '@/components/ui/Button'
+import Checkbox from '@/components/ui/Checkbox'
 
-interface ShoppingItem { id: string; item: string; quantity: string | null; checked: boolean }
-
-interface SyncItem {
-  food_name: string
-  total: number
-  unit: string  // 'g' or 'ml'
-  food_id: string | null
-  cost_total: number
-}
-
-function toBaseAmount(amount: number, unit: string): number {
-  switch (unit) {
-    case 'g':  return amount
-    case 'ml': return amount
-    case 'dl': return amount * 100
-    case 'l':  return amount * 1000
-    case 'stk': return amount
-    default:   return amount
-  }
-}
-
-function formatAmount(amount: number, baseUnit: string): string {
-  if (baseUnit === 'stk') {
-    return `${amount % 1 === 0 ? amount : amount.toFixed(1)} Stk.`
-  }
-  if (baseUnit === 'ml') {
-    if (amount >= 1000) return `${(amount / 1000).toFixed(2).replace(/\.?0+$/, '')} l`
-    if (amount >= 100)  return `${(amount / 100).toFixed(1).replace(/\.?0+$/, '')} dl`
-    return `${Math.round(amount)} ml`
-  }
-  if (amount >= 1000) return `${(amount / 1000).toFixed(2).replace(/\.?0+$/, '')} kg`
-  return `${Math.round(amount)} g`
-}
+const OWNED_KEY = 'einkauf:owned'
 
 export default function EinkaufslistePage() {
-  const [items, setItems]         = useState<ShoppingItem[]>([])
-  const [newItem, setNewItem]     = useState('')
-  const [newQty, setNewQty]       = useState('')
-  const [syncing, setSyncing]     = useState(false)
-  const [syncItems, setSyncItems] = useState<SyncItem[]>([])
-  const [showSync, setShowSync]   = useState(false)
-  const [dateFrom, setDateFrom]   = useState(() => toDateStr(getMondayOfWeek(new Date())))
-  const [dateTo, setDateTo]       = useState(() => {
-    const end = getMondayOfWeek(new Date())
-    end.setDate(end.getDate() + 6)
-    return toDateStr(end)
-  })
-  const [ownedItems, setOwnedItems] = useState<Set<number>>(new Set())
+  const { toast } = useToast()
+
+  const [items, setItems] = useState<ShoppingItem[]>([])
+  const [cycles, setCycles] = useState<PrepCycle[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const [newItem, setNewItem] = useState('')
+  const [newQty, setNewQty] = useState('')
+
+  const [showSync, setShowSync] = useState(false)
+  const [cycleId, setCycleId] = useState<string | null>(null)
+  const [syncItems, setSyncItems] = useState<CycleShoppingItem[]>([])
+  const [syncing, setSyncing] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [owned, setOwned] = useState<Set<string>>(new Set())
   const [copied, setCopied] = useState(false)
-  const router = useRouter()
 
-  useSwipe({
-    onSwipeLeft:  () => router.push('/einstellungen'),
-    onSwipeRight: () => router.push(`/tag/${toDateStr(new Date())}`),
-  })
+  const load = useCallback(async () => {
+    setError(null)
+    try {
+      const [list, cs] = await Promise.all([listShopping(), listCycles()])
+      setItems(list)
+      setCycles(cs)
+      if (!cycleId && cs.length > 0) setCycleId(cs[0].id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Liste konnte nicht geladen werden')
+    } finally {
+      setLoading(false)
+    }
+  }, [cycleId])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { void Promise.resolve().then(load) }, [load])
 
-  async function load() {
-    const { data } = await supabase.from('shopping_list').select('*').order('checked').order('created_at')
-    setItems(data || [])
-  }
+  // „Habe ich schon zuhause" überlebt den Reload.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(OWNED_KEY)
+      if (raw) setOwned(new Set(JSON.parse(raw) as string[]))
+    } catch { /* ohne localStorage eben nicht */ }
+  }, [])
 
-  async function add(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newItem.trim()) return
-    await supabase.from('shopping_list').insert({ item: newItem.trim(), quantity: newQty.trim() || null })
-    setNewItem(''); setNewQty(''); await load()
-  }
-
-  async function toggle(id: string, checked: boolean) {
-    await supabase.from('shopping_list').update({ checked: !checked }).eq('id', id); await load()
-  }
-
-  async function remove(id: string) {
-    await supabase.from('shopping_list').delete().eq('id', id); await load()
-  }
-
-  async function clearChecked() {
-    await supabase.from('shopping_list').delete().eq('checked', true); await load()
-  }
-
-  function toggleOwned(idx: number) {
-    setOwnedItems(prev => {
+  function toggleOwned(key: string) {
+    setOwned(prev => {
       const next = new Set(prev)
-      if (next.has(idx)) next.delete(idx); else next.add(idx)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      try { localStorage.setItem(OWNED_KEY, JSON.stringify([...next])) } catch { /* ignorieren */ }
       return next
     })
   }
 
-  // ── Sync from meal plan ──────────────────────────────────────
-  async function syncFromPlan() {
+  async function runSync() {
+    if (!cycleId) return
     setSyncing(true)
-    const start = dateFrom
-    const end = dateTo
-
-    // 1. Get all meal_plans for the week
-    const { data: plans } = await supabase.from('meal_plans').select('id').gte('date', start).lte('date', end)
-    if (!plans?.length) { setSyncItems([]); setSyncing(false); return }
-
-    const planIds = plans.map(p => p.id)
-
-    // 2. Get all meals
-    const { data: meals } = await supabase.from('meals').select('id').in('plan_id', planIds)
-    if (!meals?.length) { setSyncItems([]); setSyncing(false); return }
-
-    const mealIds = meals.map(m => m.id)
-
-    // 3. Get all meal_items with food unit info and cost
-    const { data: mealItems } = await supabase
-      .from('meal_items')
-      .select('food_id, food_name, amount, unit, cost, foods(unit, cost_per_100)')
-      .in('meal_id', mealIds)
-
-    if (!mealItems?.length) { setSyncItems([]); setSyncing(false); return }
-
-    // 4. Group by normalised food_name (case-insensitive) so duplicates
-    //    (e.g. one entry with food_id, one without) are properly merged.
-    const nameToKey: Record<string, string> = {}
-    const grouped: Record<string, SyncItem> = {}
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mealItems.forEach((item: any) => {
-      const normName  = item.food_name.toLowerCase().trim()
-      const foodsUnit = Array.isArray(item.foods) ? item.foods[0]?.unit : item.foods?.unit
-      const baseUnit  = foodsUnit || (item.unit === 'stk' ? 'stk' : item.unit === 'g' ? 'g' : 'ml')
-      const baseAmt   = toBaseAmount(item.amount, item.unit)
-
-      // Prefer food_id as canonical key; fall back to normalised name
-      const canonicalKey = item.food_id || normName
-      // If we've already seen this name under a different key, reuse that key
-      const key = nameToKey[normName] ?? canonicalKey
-      nameToKey[normName] = key
-
-      if (!grouped[key]) {
-        grouped[key] = { food_name: item.food_name, total: 0, unit: baseUnit, food_id: item.food_id, cost_total: 0 }
-      }
-      grouped[key].total += baseAmt
-      grouped[key].cost_total += Number(item.cost) || 0
-    })
-
-    setSyncItems(Object.values(grouped).sort((a, b) => a.food_name.localeCompare(b.food_name)))
-    setOwnedItems(new Set())
-    setSyncing(false)
-  }
-
-  async function addSyncItemToList(item: SyncItem) {
-    await supabase.from('shopping_list').insert({
-      item:     item.food_name,
-      quantity: formatAmount(item.total, item.unit),
-    })
-    await load()
-  }
-
-  async function addAllToList() {
-    const toAdd = syncItems.filter((_, i) => !ownedItems.has(i))
-    if (!toAdd.length) return
-    await supabase.from('shopping_list').insert(
-      toAdd.map(item => ({ item: item.food_name, quantity: formatAmount(item.total, item.unit) }))
-    )
-    await load()
-    setShowSync(false)
-  }
-
-  // ── Bring! Deep-Link Export ──────────────────────────────────
-  function buildBringDeepLink() {
-    const activeItems = items.filter(i => !i.checked)
-    if (activeItems.length === 0) return null
-    // Bring! recipe deeplink format: items as JSON array
-    const bringItems = activeItems.map(i => ({
-      itemId: i.item,
-      spec: i.quantity || '',
-    }))
-    const payload = {
-      items: bringItems,
-      source: 'Menüplan',
+    try {
+      setSyncItems(await getCycleShoppingItems(cycleId))
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Berechnen fehlgeschlagen', 'error')
+    } finally {
+      setSyncing(false)
     }
-    const encoded = encodeURIComponent(JSON.stringify(payload))
-    return `https://api.getbring.com/rest/bringrecipes/deeplink?source=men%C3%BCplan&items=${encoded}`
   }
+
+  async function applySync() {
+    if (!cycleId) return
+    try {
+      const n = await syncCycleToShoppingList(cycleId, syncItems, owned)
+      await load()
+      setShowSync(false)
+      toast(`${n} Positionen übernommen`, 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Übernehmen fehlgeschlagen', 'error')
+    }
+  }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newItem.trim()) return
+    try {
+      await addShoppingItem(newItem.trim(), newQty)
+      setNewItem(''); setNewQty('')
+      await load()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Hinzufügen fehlgeschlagen', 'error')
+    }
+  }
+
+  const unchecked = useMemo(() => items.filter(i => !i.checked), [items])
+  const checkedItems = useMemo(() => items.filter(i => i.checked), [items])
 
   function exportToBring() {
-    const activeItems = items.filter(i => !i.checked)
-    if (activeItems.length === 0) return
-    // Build a Bring!-compatible URL with items
-    // Format: https://api.getbring.com/rest/bringrecipes/deeplink
-    const itemsParam = activeItems.map(i => {
-      const name = encodeURIComponent(i.item)
-      const spec = encodeURIComponent(i.quantity || '')
-      return `${name},${spec}`
-    }).join('|')
-    const url = `https://api.getbring.com/rest/bringrecipes/deeplink?source=${encodeURIComponent('Menüplan')}&items=${itemsParam}`
-    window.open(url, '_blank')
+    if (unchecked.length === 0) return
+    const itemsParam = unchecked
+      .map(i => `${encodeURIComponent(i.item)},${encodeURIComponent(i.quantity || '')}`)
+      .join('|')
+    window.open(
+      `https://api.getbring.com/rest/bringrecipes/deeplink?source=${encodeURIComponent('Menüplan')}&items=${itemsParam}`,
+      '_blank'
+    )
   }
 
-  async function copyListAsText() {
-    const activeItems = items.filter(i => !i.checked)
-    if (activeItems.length === 0) return
-    const text = activeItems.map(i => i.quantity ? `${i.item} – ${i.quantity}` : i.item).join('\n')
+  async function copyAsText() {
+    if (unchecked.length === 0) return
+    const text = unchecked.map(i => i.quantity ? `${i.item} – ${i.quantity}` : i.item).join('\n')
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // Fallback: prompt
       prompt('Liste kopieren:', text)
     }
   }
 
-  const unchecked = items.filter(i => !i.checked)
-  const checked   = items.filter(i => i.checked)
-
-  const inputStyle: React.CSSProperties = {
-    background: 'white',
-    border: '1px solid #e2e8f0',
-    color: '#1e293b',
-    borderRadius: '0.75rem',
-    padding: '0.625rem 1rem',
-    fontSize: '0.875rem',
-    outline: 'none',
-  }
+  const activeCycle = cycles.find(c => c.id === cycleId)
 
   return (
     <div className="max-w-lg mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Einkaufsliste</h1>
-        <div className="flex items-center gap-2">
-          {items.length > 0 && (
-            <button
-              onClick={async () => { if (confirm('Gesamte Einkaufsliste löschen?')) { await supabase.from('shopping_list').delete().neq('id', ''); await load() } }}
-              className="text-xs transition-colors"
-              style={{ color: '#dc2626' }}
-            >
-              Alle löschen
-            </button>
-          )}
-          {checked.length > 0 && (
-            <button
-              onClick={clearChecked}
-              className="text-xs transition-colors"
-              style={{ color: '#64748b' }}
-              onMouseEnter={e => ((e.target as HTMLElement).style.color = '#94a3b8')}
-              onMouseLeave={e => ((e.target as HTMLElement).style.color = '#64748b')}
-            >
-              Erledigte löschen
-            </button>
-          )}
-          <button
-            onClick={() => setShowSync(v => !v)}
-            className="text-xs text-white px-3 py-1.5 rounded-lg font-medium hover:opacity-90 transition-opacity flex items-center gap-1.5"
-            style={{ background: '#059669' }}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Sync
-          </button>
-        </div>
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="font-display font-normal text-2xl text-text">Einkauf</h1>
+        <Pill variant="accent" onClick={() => { setShowSync(v => !v); if (!showSync) void runSync() }}>
+          Sync
+        </Pill>
       </div>
 
-      {/* Sync panel */}
+      {/* Zyklus-Sync */}
       {showSync && (
-        <div
-          className="rounded-2xl p-5 mb-5"
-          style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
-        >
-          <h2 className="text-sm font-semibold mb-3" style={{ color: '#1e293b' }}>Einkaufsliste berechnen</h2>
-          <p className="text-xs mb-4" style={{ color: '#94a3b8' }}>
-            Berechnet alle benötigten Zutaten aus dem Menüplan und summiert sie auf.
-          </p>
-          <div className="space-y-2 mb-4">
-            <div className="flex items-center gap-2">
-              <label className="text-xs shrink-0 w-8" style={{ color: '#64748b' }}>Von:</label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                style={{
-                  flex: 1, background: 'white', border: '1px solid #e2e8f0', color: '#1e293b',
-                  borderRadius: '0.5rem', padding: '0.375rem 0.75rem', fontSize: '0.875rem', outline: 'none',
-                }}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs shrink-0 w-8" style={{ color: '#64748b' }}>Bis:</label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                style={{
-                  flex: 1, background: 'white', border: '1px solid #e2e8f0', color: '#1e293b',
-                  borderRadius: '0.5rem', padding: '0.375rem 0.75rem', fontSize: '0.875rem', outline: 'none',
-                }}
-              />
-            </div>
-          </div>
-          <button
-            onClick={syncFromPlan}
-            disabled={syncing || !dateFrom || !dateTo}
-            className="w-full text-white py-2 rounded-xl text-sm font-semibold disabled:opacity-50 transition-opacity hover:opacity-90 mb-4"
-            style={{ background: '#475569' }}
-          >
-            {syncing ? 'Lädt…' : 'Berechnen'}
-          </button>
+        <Card className="mb-4">
+          <CardLabel>Aus Zyklus berechnen</CardLabel>
 
-          {syncItems.length > 0 && (
+          {cycles.length === 0 ? (
+            <p className="text-sm text-text-muted mt-3">
+              Noch kein Kochzyklus vorhanden. Leg unter „Prep“ einen an.
+            </p>
+          ) : (
             <>
-              <div
-                className="rounded-xl mb-3 overflow-hidden"
-                style={{ border: '1px solid #f1f5f9' }}
+              <select
+                value={cycleId ?? ''}
+                onChange={e => { setCycleId(e.target.value); setSyncItems([]) }}
+                className="w-full min-h-11 px-3 mt-3 rounded-button bg-surface-alt border border-border text-text text-sm outline-none"
               >
-                {syncItems.map((item, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between px-4 py-2.5"
-                    style={i > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}
-                  >
-                    <span
-                      className="text-sm flex-1 min-w-0 truncate"
-                      style={{ color: ownedItems.has(i) ? '#94a3b8' : '#1e293b',
-                               textDecoration: ownedItems.has(i) ? 'line-through' : 'none' }}
-                    >
-                      {item.food_name}
-                    </span>
-                    <div className="flex items-center gap-2 ml-3 shrink-0">
-                      <span className="text-sm font-medium" style={{ color: '#64748b' }}>{formatAmount(item.total, item.unit)}</span>
-                      {item.cost_total > 0 && (
-                        <span className="text-xs" style={{ color: '#94a3b8' }}>≈ CHF {item.cost_total.toFixed(2)}</span>
-                      )}
-                      <button
-                        onClick={() => toggleOwned(i)}
-                        className="text-xs font-medium px-2 py-0.5 rounded-lg transition-colors"
-                        style={ownedItems.has(i)
-                          ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }
-                          : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}
-                        title={ownedItems.has(i) ? 'Als fehlend markieren' : 'Schon vorhanden'}
-                      >
-                        {ownedItems.has(i) ? '✓ Hab ich' : 'Hab ich'}
-                      </button>
-                      {!ownedItems.has(i) && (
-                        <button
-                          onClick={() => addSyncItemToList(item)}
-                          className="text-xs font-medium transition-colors"
-                          style={{ color: '#475569' }}
-                        >
-                          + Liste
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                {cycles.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name || `Kochtag ${fmt(c.cook_date)}`} · {fmt(c.start_date)}–{fmt(c.end_date)}
+                  </option>
                 ))}
-              </div>
-              {/* Total price */}
-              {(() => {
-                const totalCost = syncItems
-                  .filter((_, i) => !ownedItems.has(i))
-                  .reduce((sum, item) => sum + item.cost_total, 0)
-                return totalCost > 0 ? (
-                  <div
-                    className="flex items-center justify-between px-4 py-2.5 mb-3 rounded-xl"
-                    style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}
-                  >
-                    <span className="text-sm font-semibold" style={{ color: '#1e293b' }}>Geschätzter Gesamtpreis</span>
-                    <span className="text-sm font-bold" style={{ color: '#059669' }}>≈ CHF {totalCost.toFixed(2)}</span>
-                  </div>
-                ) : null
-              })()}
-              <button
-                onClick={addAllToList}
-                className="w-full text-white py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
-                style={{ background: '#059669' }}
-              >
-                {ownedItems.size > 0
-                  ? `${syncItems.length - ownedItems.size} Artikel zur Liste hinzufügen`
-                  : 'Alle zur Einkaufsliste hinzufügen'}
-              </button>
+              </select>
+
+              <Button fullWidth className="mt-3" onClick={runSync} disabled={syncing || !cycleId}>
+                {syncing ? 'Berechnen…' : 'Berechnen'}
+              </Button>
+
+              {syncItems.length > 0 && (
+                <>
+                  <p className="text-xs text-text-muted mt-4 mb-2">
+                    {syncItems.length} Positionen · {owned.size > 0 && `${owned.size} schon zuhause`}
+                  </p>
+                  <ul className="mb-3">
+                    {syncItems.map(item => {
+                      const key = shoppingKey(item)
+                      const isOwned = owned.has(key)
+                      const isOpen = expanded.has(key)
+                      const rounded = roundForShopping(item.total_amount, item.unit)
+                      return (
+                        <li key={key} className="border-b border-border-soft last:border-0 py-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setExpanded(prev => {
+                                const n = new Set(prev)
+                                if (n.has(key)) n.delete(key); else n.add(key)
+                                return n
+                              })}
+                              className="tap-inline flex-1 text-left min-w-0"
+                            >
+                              <span className={`text-sm ${isOwned ? 'line-through text-text-faint' : 'text-text'}`}>
+                                {item.food_name}
+                              </span>
+                              <span className="text-xs text-text-muted ml-2">
+                                {formatAmount(rounded, item.unit)}
+                              </span>
+                              {rounded !== item.total_amount && (
+                                <span className="text-[10px] text-text-faint ml-1">
+                                  (geplant {formatAmount(item.total_amount, item.unit)})
+                                </span>
+                              )}
+                            </button>
+                            <Pill
+                              variant={isOwned ? 'success' : 'neutral'}
+                              onClick={() => toggleOwned(key)}
+                            >
+                              {isOwned ? '✓ Hab ich' : 'Hab ich'}
+                            </Pill>
+                          </div>
+
+                          {isOpen && (
+                            <ul className="mt-2 pl-3 border-l-2 border-border-soft">
+                              {item.sources.map((s, i) => (
+                                <li key={i} className="text-xs text-text-muted py-0.5">
+                                  {formatAmount(s.amount, item.unit)} aus {s.source}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+
+                  <Button fullWidth onClick={applySync}>
+                    {syncItems.length - owned.size} Positionen übernehmen
+                  </Button>
+                  {activeCycle && (
+                    <p className="text-[11px] text-text-faint mt-2">
+                      Ersetzt die generierten Positionen dieses Zyklus. Selbst hinzugefügte bleiben stehen.
+                    </p>
+                  )}
+                </>
+              )}
             </>
           )}
-
-          {!syncing && syncItems.length === 0 && (
-            <p className="text-xs text-center py-2" style={{ color: '#94a3b8' }}>
-              Für diese Woche sind keine Mahlzeiten geplant.
-            </p>
-          )}
-        </div>
+        </Card>
       )}
 
-      {/* Add form */}
-      <form onSubmit={add} className="flex gap-2 mb-5">
+      {/* Eigene Position */}
+      <form onSubmit={handleAdd} className="flex gap-2 mb-3">
         <input
           type="text"
           value={newItem}
           onChange={e => setNewItem(e.target.value)}
-          placeholder="Artikel…"
-          style={{ ...inputStyle, flex: 1 }}
+          placeholder="Artikel"
+          className="flex-1 min-h-11 px-3 rounded-button bg-surface border border-border text-text text-sm outline-none placeholder:text-text-faint"
         />
         <input
           type="text"
           value={newQty}
           onChange={e => setNewQty(e.target.value)}
           placeholder="Menge"
-          style={{ ...inputStyle, width: '6rem' }}
+          className="w-24 min-h-11 px-3 rounded-button bg-surface border border-border text-text text-sm outline-none placeholder:text-text-faint"
         />
-        <button
-          type="submit"
-          className="text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
-          style={{ background: '#475569' }}
-        >
-          +
-        </button>
+        <IconButton label="Hinzufügen" variant="primary" type="submit">+</IconButton>
       </form>
 
-      {/* Export buttons (Bring! + Copy) */}
-      {unchecked.length > 0 && (
-        <div className="flex gap-2 mb-5">
-          <button
-            onClick={exportToBring}
-            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
-            style={{ background: '#4CAF50', color: 'white' }}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+      {/* Teilen */}
+      <div className="flex gap-2 mb-4">
+        <Button variant="secondary" fullWidth onClick={exportToBring} disabled={unchecked.length === 0}>
+          Teilen
+        </Button>
+        <IconButton label="Als Text kopieren" onClick={copyAsText}>
+          {copied ? '✓' : (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3" />
             </svg>
-            In Bring! öffnen
-          </button>
-          <button
-            onClick={copyListAsText}
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
-            style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569' }}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-            </svg>
-            {copied ? '✓ Kopiert!' : 'Kopieren'}
-          </button>
-        </div>
+          )}
+        </IconButton>
+      </div>
+
+      {loading && <p className="text-sm text-center py-10 text-text-muted">Laden…</p>}
+
+      {error && (
+        <Card className="text-center">
+          <p className="text-sm text-danger mb-3">{error}</p>
+          <Button variant="secondary" onClick={() => { setLoading(true); void load() }}>Erneut versuchen</Button>
+        </Card>
       )}
 
-      {/* List */}
-      <div
-        className="rounded-2xl overflow-hidden"
-        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
-      >
-        {items.length === 0 && (
-          <p className="px-5 py-10 text-center text-sm" style={{ color: '#94a3b8' }}>Einkaufsliste ist leer</p>
-        )}
-        {[...unchecked, ...checked].map((item, idx) => (
-          <div
-            key={item.id}
-            className="flex items-center gap-3 px-5 py-3"
-            style={idx > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}
-          >
-            <input
-              type="checkbox"
-              checked={item.checked}
-              onChange={() => toggle(item.id, item.checked)}
-              className="w-4 h-4 rounded shrink-0"
-              style={{ accentColor: '#475569' }}
-            />
-            <span
-              className={`flex-1 text-sm ${item.checked ? 'line-through' : ''}`}
-              style={{ color: item.checked ? '#94a3b8' : '#1e293b' }}
-            >
-              {item.item}
-            </span>
-            {item.quantity && (
-              <span
-                className="text-xs font-medium shrink-0"
-                style={{ color: item.checked ? '#94a3b8' : '#64748b' }}
-              >
-                {item.quantity}
-              </span>
-            )}
-            <button
-              onClick={() => remove(item.id)}
-              className="text-base leading-none shrink-0 transition-colors"
-              style={{ color: '#475569' }}
-              onMouseEnter={e => ((e.target as HTMLElement).style.color = '#f87171')}
-              onMouseLeave={e => ((e.target as HTMLElement).style.color = '#475569')}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
+      {!loading && !error && (
+        <Card flush>
+          {items.length === 0 && (
+            <p className="px-5 py-10 text-center text-sm text-text-muted">Einkaufsliste ist leer</p>
+          )}
+
+          <ul className="px-5">
+            {unchecked.map(i => (
+              <li key={i.id} className="border-b border-border-soft last:border-0 flex items-center gap-2">
+                <Checkbox
+                  checked={false}
+                  onChange={async () => { await setShoppingChecked(i.id, true); await load() }}
+                  label={i.item}
+                  trailing={i.quantity ?? undefined}
+                />
+                <button
+                  onClick={async () => { await deleteShoppingItem(i.id); await load() }}
+                  aria-label={`${i.item} löschen`}
+                  className="tap-inline text-text-faint hover:text-danger px-1"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {checkedItems.length > 0 && (
+            <>
+              <div className="flex items-center justify-between px-5 pt-3 pb-1">
+                <CardLabel>Erledigt ({checkedItems.length})</CardLabel>
+                <button
+                  onClick={async () => { await clearChecked(); await load() }}
+                  className="tap-inline text-xs text-text-muted hover:text-danger"
+                >
+                  Löschen
+                </button>
+              </div>
+              <ul className="px-5 pb-3">
+                {checkedItems.map(i => (
+                  <li key={i.id} className="border-b border-border-soft last:border-0">
+                    <Checkbox
+                      checked
+                      onChange={async () => { await setShoppingChecked(i.id, false); await load() }}
+                      label={i.item}
+                      trailing={i.quantity ?? undefined}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </Card>
+      )}
     </div>
   )
+}
+
+function fmt(dateStr: string): string {
+  return new Date(`${dateStr}T12:00:00`).toLocaleDateString('de-CH', { day: 'numeric', month: 'short' })
 }

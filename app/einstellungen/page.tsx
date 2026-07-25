@@ -1,418 +1,253 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { loadSettings, saveSetting } from '@/lib/settings'
-import { supabase } from '@/lib/supabase'
-import { MEAL_TYPE_LABELS } from '@/lib/mealTypes'
+import { useState, useEffect, useCallback } from 'react'
+import { loadSettings, saveSetting, DEFAULTS } from '@/lib/settings'
+import { listRecipes } from '@/lib/db/recipes'
+import { listFoodCategories, createFoodCategory, deleteFoodCategory } from '@/lib/db/foods'
+import { listEventRules, addEventRule, deleteEventRule } from '@/lib/eventRules'
+import type { EventMealRule, FoodCategory, Recipe } from '@/lib/db/types'
+import { MEAL_TYPE_ORDER, MEAL_TYPE_LABELS, type MealTypeKey } from '@/lib/mealTypes'
+import { useToast } from '@/components/Toast'
+import Card, { CardLabel } from '@/components/ui/Card'
+import Pill from '@/components/ui/Pill'
+import Button, { IconButton } from '@/components/ui/Button'
 
-interface Field {
-  key: string
-  label: string
-  description: string
-  unit: string
-  min: number
-  step: number
-}
-
-const FIELDS: Field[] = [
-  { key: 'kcal_ziel',    label: 'Kalorienziel',  description: 'Tägliches Kaloriendefizit oder -überschuss', unit: 'kcal', min: 500,  step: 50 },
-  { key: 'protein_ziel', label: 'Proteinziel',   description: 'Tägliche Proteinmenge',                       unit: 'g',   min: 50,   step: 5 },
-  { key: 'kosten_ziel',  label: 'Kostenbudget',  description: 'Tägliches Budget für Lebensmittel',           unit: 'CHF', min: 5,    step: 1 },
+const GOALS: Array<{ key: keyof typeof DEFAULTS; label: string; unit: string }> = [
+  { key: 'kcal_ziel',    label: 'Kalorien',  unit: 'kcal' },
+  { key: 'protein_ziel', label: 'Protein',   unit: 'g' },
+  { key: 'kosten_ziel',  label: 'Kosten',    unit: 'CHF' },
 ]
 
-const EVENT_LABELS: Record<string, string> = {
-  training:   'Trainingstag',
-  eingeladen: 'Eingeladen / Auswärts',
-}
-
-interface MealTemplate { id: string; name: string; meal_type: string }
-interface EventRule { id: string; event_type: string; meal_type: string; template_id: string; meal_templates: MealTemplate }
-
 export default function EinstellungenPage() {
-  const [values, setValues] = useState<Record<string, string>>({
-    kcal_ziel: '2000', protein_ziel: '150', kosten_ziel: '20',
-  })
-  const [saved, setSaved] = useState(false)
+  const { toast } = useToast()
+
+  const [values, setValues] = useState<Record<string, string>>({ ...DEFAULTS })
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [categories, setCategories] = useState<FoodCategory[]>([])
+  const [rules, setRules] = useState<EventMealRule[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Event rules
-  const [rules, setRules] = useState<EventRule[]>([])
-  const [templates, setTemplates] = useState<MealTemplate[]>([])
-  const [addingRule, setAddingRule] = useState(false)
-  const [newEvent, setNewEvent] = useState('training')
-  const [newMealType, setNewMealType] = useState('fruehstueck')
-  const [newTemplateId, setNewTemplateId] = useState('')
+  const [newCat, setNewCat] = useState('')
+  const [newEvent, setNewEvent] = useState<'training' | 'eingeladen'>('training')
+  const [newMealType, setNewMealType] = useState<MealTypeKey>('mittagessen')
+  const [newRecipeId, setNewRecipeId] = useState('')
 
-  // Categories
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
-  const [newCatName, setNewCatName] = useState('')
-  const [savingCat, setSavingCat] = useState(false)
-
-  useEffect(() => {
-    loadSettings().then(data => { setValues(data); setLoading(false) })
-    loadRules()
-    supabase.from('meal_templates').select('id, name, meal_type').order('name')
-      .then(({ data }) => setTemplates(data || []))
-    loadCategories()
+  const load = useCallback(async () => {
+    setError(null)
+    try {
+      const [s, rs, cs, rl] = await Promise.all([
+        loadSettings(), listRecipes(), listFoodCategories(), listEventRules(),
+      ])
+      setValues(s); setRecipes(rs); setCategories(cs); setRules(rl)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Einstellungen konnten nicht geladen werden')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  async function loadRules() {
-    const { data } = await supabase
-      .from('event_meal_rules')
-      .select('*, meal_templates(id, name, meal_type)')
-      .order('created_at')
-    setRules((data as EventRule[]) || [])
+  useEffect(() => { void Promise.resolve().then(load) }, [load])
+
+  async function save(key: string, value: string) {
+    setValues(v => ({ ...v, [key]: value }))
+    try { await saveSetting(key, value) }
+    catch (e) { toast(e instanceof Error ? e.message : 'Speichern fehlgeschlagen', 'error') }
   }
 
-  async function addRule() {
-    if (!newTemplateId) return
-    await supabase.from('event_meal_rules').insert({
-      event_type: newEvent,
-      meal_type: newMealType,
-      template_id: newTemplateId,
-    })
-    setAddingRule(false)
-    setNewTemplateId('')
-    await loadRules()
-  }
+  const breakfastRecipes = recipes.filter(r => r.meal_type === 'fruehstueck')
+  const snackRecipes = recipes.filter(r => r.meal_type === 'snack')
 
-  async function deleteRule(id: string) {
-    await supabase.from('event_meal_rules').delete().eq('id', id)
-    await loadRules()
-  }
+  if (loading) return <p className="text-sm text-center py-10 text-text-muted">Laden…</p>
 
-  async function loadCategories() {
-    const { data } = await supabase.from('food_categories').select('id, name').order('name')
-    setCategories(data || [])
-  }
-
-  async function addCategory() {
-    const trimmed = newCatName.trim()
-    if (!trimmed) return
-    setSavingCat(true)
-    await supabase.from('food_categories').insert({ name: trimmed })
-    setNewCatName('')
-    setSavingCat(false)
-    await loadCategories()
-  }
-
-  async function deleteCategory(id: string) {
-    if (!confirm('Kategorie wirklich löschen?')) return
-    await supabase.from('food_categories').delete().eq('id', id)
-    await loadCategories()
-  }
-
-  async function handleSave() {
-    await Promise.all(Object.entries(values).map(([k, v]) => saveSetting(k, v)))
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
-  }
-
-  if (loading) return <div className="text-center py-12 text-sm" style={{ color: '#64748b' }}>Laden…</div>
-
-  const inputStyle: React.CSSProperties = {
-    width: '6rem',
-    background: 'white',
-    border: '1px solid #e2e8f0',
-    color: '#1e293b',
-    borderRadius: '0.5rem',
-    padding: '0.5rem 0.75rem',
-    fontSize: '0.875rem',
-    textAlign: 'right',
-    outline: 'none',
+  if (error) {
+    return (
+      <div className="max-w-lg mx-auto">
+        <Card className="text-center">
+          <p className="text-sm text-danger mb-3">{error}</p>
+          <Button variant="secondary" onClick={() => { setLoading(true); void load() }}>Erneut versuchen</Button>
+        </Card>
+      </div>
+    )
   }
 
   return (
     <div className="max-w-lg mx-auto">
-      <div className="mb-7">
-        <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Einstellungen</h1>
-        <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
-          Ziele für Kalorien, Protein und Kosten — steuern die Farbanzeigen im Dashboard und Kalender.
-        </p>
-      </div>
+      <h1 className="font-display font-normal text-2xl text-text mb-5">Einstellungen</h1>
 
-      {/* Verwaltung */}
-      <div
-        className="rounded-2xl overflow-hidden mb-5"
-        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
-      >
-        <div
-          className="px-5 py-3.5"
-          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
-        >
-          <h2 className="text-sm font-semibold" style={{ color: '#1e293b' }}>Verwaltung</h2>
-        </div>
-        <div>
-          <Link href="/datenbank"
-            className="px-5 py-4 flex items-center justify-between transition-colors"
-            style={{ color: '#1e293b' }}>
-            <div>
-              <span className="text-sm font-medium">Lebensmittel-Datenbank</span>
-              <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Lebensmittel verwalten</p>
-            </div>
-            <span style={{ color: '#cbd5e1' }}>›</span>
-          </Link>
-          <Link href="/vorlagen"
-            className="px-5 py-4 flex items-center justify-between transition-colors"
-            style={{ borderTop: '1px solid #f1f5f9', color: '#1e293b' }}>
-            <div>
-              <span className="text-sm font-medium">Vorlagen</span>
-              <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Mahlzeit- und Tagesvorlagen verwalten</p>
-            </div>
-            <span style={{ color: '#cbd5e1' }}>›</span>
-          </Link>
-          <Link href="/grosse-menus"
-            className="px-5 py-4 flex items-center justify-between transition-colors"
-            style={{ borderTop: '1px solid #f1f5f9', color: '#1e293b' }}>
-            <div>
-              <span className="text-sm font-medium">Große Menüs</span>
-              <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Mehrtägige Menüs erstellen und verteilen</p>
-            </div>
-            <span style={{ color: '#cbd5e1' }}>›</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* Goal section */}
-      <div
-        className="rounded-2xl overflow-hidden mb-5"
-        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
-      >
-        <div
-          className="px-5 py-3.5"
-          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
-        >
-          <h2 className="text-sm font-semibold" style={{ color: '#1e293b' }}>Tagesziele</h2>
-        </div>
-        <div>
-          {FIELDS.map((f, idx) => (
-            <div
-              key={f.key}
-              className="px-5 py-4 flex items-center gap-4"
-              style={idx > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}
-            >
-              <div className="flex-1">
-                <label className="block text-sm font-medium" style={{ color: '#1e293b' }}>{f.label}</label>
-                <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>{f.description}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
+      {/* Tagesziele */}
+      <Card className="mb-4">
+        <CardLabel>Tagesziele</CardLabel>
+        <div className="flex flex-col gap-3 mt-3">
+          {GOALS.map(g => (
+            <label key={g.key} className="flex items-center justify-between gap-3">
+              <span className="text-sm text-text-secondary">{g.label}</span>
+              <span className="flex items-center gap-2">
                 <input
-                  type="number"
-                  value={values[f.key] || ''}
-                  onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  min={f.min}
-                  step={f.step}
-                  style={inputStyle}
+                  type="text"
+                  inputMode="decimal"
+                  value={values[g.key] ?? ''}
+                  onChange={e => setValues(v => ({ ...v, [g.key]: e.target.value }))}
+                  onBlur={e => save(g.key, e.target.value)}
+                  className="w-24 min-h-11 px-3 rounded-button bg-surface-alt border border-border text-text text-sm text-right outline-none"
                 />
-                <span className="text-xs w-8" style={{ color: '#94a3b8' }}>{f.unit}</span>
-              </div>
-            </div>
+                <span className="w-10 text-xs text-text-muted">{g.unit}</span>
+              </span>
+            </label>
           ))}
         </div>
-      </div>
+      </Card>
 
-      {/* Color legend */}
-      <div
-        className="rounded-2xl p-5 mb-5"
-        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
-      >
-        <h2 className="text-sm font-semibold mb-3" style={{ color: '#1e293b' }}>Farbskala</h2>
-        <div className="space-y-3">
-          <div>
-            <p className="text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Kalorien &amp; Kosten (Limit)</p>
-            <div className="space-y-1.5">
-              {[
-                { color: 'bg-green-500', label: 'Grün', desc: 'Unter dem Limit (< 100%)' },
-                { color: 'bg-red-500', label: 'Rot', desc: 'Limit überschritten (≥ 100%)' },
-              ].map(item => (
-                <div key={item.label + '-limit'} className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${item.color}`} />
-                  <span className="text-xs font-medium w-12" style={{ color: '#1e293b' }}>{item.label}</span>
-                  <span className="text-xs" style={{ color: '#94a3b8' }}>{item.desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Protein (Ziel)</p>
-            <div className="space-y-1.5">
-              {[
-                { color: 'bg-red-500', label: 'Rot', desc: 'Ziel nicht erreicht (< 100%)' },
-                { color: 'bg-amber-500', label: 'Orange', desc: 'Fast erreicht (80–99%)' },
-                { color: 'bg-green-500', label: 'Grün', desc: 'Ziel erreicht (≥ 100%)' },
-              ].map(item => (
-                <div key={item.label + '-goal'} className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${item.color}`} />
-                  <span className="text-xs font-medium w-12" style={{ color: '#1e293b' }}>{item.label}</span>
-                  <span className="text-xs" style={{ color: '#94a3b8' }}>{item.desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Event-Meal Rules */}
-      <div
-        className="rounded-2xl overflow-hidden mb-5"
-        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
-      >
-        <div
-          className="px-5 py-3.5 flex items-center justify-between"
-          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
-        >
-          <div>
-            <h2 className="text-sm font-semibold" style={{ color: '#1e293b' }}>Event-Verknüpfungen</h2>
-            <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Mahlzeiten automatisch einfügen bei Events</p>
-          </div>
-          <button
-            onClick={() => setAddingRule(true)}
-            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-            style={{ background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}
-          >
-            + Neu
-          </button>
-        </div>
-        <div>
-          {rules.length === 0 && !addingRule && (
-            <p className="px-5 py-6 text-center text-xs" style={{ color: '#94a3b8' }}>
-              Noch keine Regeln. z.B. «Trainingstag → Porridge zum Frühstück»
-            </p>
-          )}
-          {rules.map((rule, idx) => (
-            <div
-              key={rule.id}
-              className="px-5 py-3.5 flex items-center justify-between"
-              style={idx > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}
+      {/* Standard-Mahlzeiten */}
+      <Card className="mb-4">
+        <CardLabel>Standard-Mahlzeiten</CardLabel>
+        <p className="text-xs text-text-muted mt-1 mb-3">
+          Wird beim Anlegen eines Zyklus und beim Öffnen eines leeren Tages automatisch gesetzt,
+          bleibt aber pro Tag überschreib- und löschbar.
+        </p>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm text-text-secondary">Frühstück</span>
+            <select
+              value={values.default_breakfast_recipe_id ?? ''}
+              onChange={e => save('default_breakfast_recipe_id', e.target.value)}
+              className="min-h-11 px-3 rounded-button bg-surface-alt border border-border text-text text-sm outline-none"
             >
-              <div>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                    style={rule.event_type === 'training'
-                      ? { background: '#dbeafe', color: '#1d4ed8' }
-                      : { background: '#ede9fe', color: '#6d28d9' }}>
-                    {EVENT_LABELS[rule.event_type]}
-                  </span>
-                  <span className="text-xs" style={{ color: '#94a3b8' }}>→</span>
-                  <span className="text-xs font-medium" style={{ color: '#64748b' }}>
-                    {MEAL_TYPE_LABELS[rule.meal_type]}
-                  </span>
-                </div>
-                <span className="text-sm font-semibold" style={{ color: '#1e293b' }}>
-                  {rule.meal_templates?.name || 'Vorlage gelöscht'}
-                </span>
-              </div>
-              <button onClick={() => deleteRule(rule.id)}
-                className="text-xs transition-all" style={{ color: '#94a3b8' }}>
-                Entfernen
-              </button>
-            </div>
-          ))}
+              <option value="">Keins</option>
+              {breakfastRecipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </label>
 
-          {/* Add rule form */}
-          {addingRule && (
-            <div className="px-5 py-4 space-y-3" style={{ borderTop: rules.length > 0 ? '1px solid #f1f5f9' : 'none', background: '#fafbfc' }}>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: '#64748b' }}>Event</label>
-                  <select value={newEvent} onChange={e => setNewEvent(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid #e2e8f0', color: '#1e293b', background: 'white' }}>
-                    <option value="training">Trainingstag</option>
-                    <option value="eingeladen">Eingeladen</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: '#64748b' }}>Mahlzeit</label>
-                  <select value={newMealType} onChange={e => setNewMealType(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid #e2e8f0', color: '#1e293b', background: 'white' }}>
-                    {Object.entries(MEAL_TYPE_LABELS).map(([k, v]) => (
-                      <option key={k} value={k}>{v}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#64748b' }}>Vorlage</label>
-                <select value={newTemplateId} onChange={e => setNewTemplateId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid #e2e8f0', color: '#1e293b', background: 'white' }}>
-                  <option value="">Vorlage wählen…</option>
-                  {templates.map(t => (
-                    <option key={t.id} value={t.id}>{t.name} ({MEAL_TYPE_LABELS[t.meal_type] || t.meal_type})</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => { setAddingRule(false); setNewTemplateId('') }}
-                  className="flex-1 py-2 rounded-lg text-sm font-medium"
-                  style={{ background: '#f1f5f9', color: '#64748b' }}>Abbrechen</button>
-                <button onClick={addRule} disabled={!newTemplateId}
-                  className="flex-1 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
-                  style={{ background: '#4f46e5' }}>Hinzufügen</button>
-              </div>
-            </div>
-          )}
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm text-text-secondary">Snack (optional)</span>
+            <select
+              value={values.default_snack_recipe_id ?? ''}
+              onChange={e => save('default_snack_recipe_id', e.target.value)}
+              className="min-h-11 px-3 rounded-button bg-surface-alt border border-border text-text text-sm outline-none"
+            >
+              <option value="">Keiner</option>
+              {snackRecipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </label>
         </div>
-      </div>
+      </Card>
 
-      {/* Categories */}
-      <div
-        className="rounded-2xl overflow-hidden mb-5"
-        style={{ background: 'white', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
-      >
-        <div
-          className="px-5 py-3.5"
-          style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}
-        >
-          <h2 className="text-sm font-semibold" style={{ color: '#1e293b' }}>Lebensmittel-Kategorien</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Z.B. Gemüse, Fleisch, Milchprodukte</p>
-        </div>
-        <div>
-          {categories.length === 0 && (
-            <p className="px-5 py-4 text-center text-xs" style={{ color: '#94a3b8' }}>Noch keine Kategorien angelegt.</p>
-          )}
-          {categories.map((cat, idx) => (
-            <div key={cat.id} className="px-5 py-3 flex items-center justify-between"
-              style={idx > 0 ? { borderTop: '1px solid #f1f5f9' } : {}}>
-              <span className="text-sm font-medium" style={{ color: '#1e293b' }}>{cat.name}</span>
-              <button onClick={() => deleteCategory(cat.id)}
-                className="text-xs transition-all" style={{ color: '#94a3b8' }}
-                onMouseEnter={e => ((e.target as HTMLElement).style.color = '#dc2626')}
-                onMouseLeave={e => ((e.target as HTMLElement).style.color = '#94a3b8')}>
-                Entfernen
-              </button>
-            </div>
+      {/* Event-Regeln */}
+      <Card className="mb-4">
+        <CardLabel>Event-Regeln</CardLabel>
+        <p className="text-xs text-text-muted mt-1 mb-3">
+          An Tagen mit diesem Marker wird das Rezept als Vorschlag angeboten.
+        </p>
+
+        {rules.length === 0 && <p className="text-sm text-text-faint mb-3">Noch keine Regeln.</p>}
+
+        <ul className="mb-3">
+          {rules.map(r => (
+            <li key={r.id} className="flex items-center gap-2 border-b border-border-soft last:border-0 py-2">
+              <Pill variant={r.event_type === 'training' ? 'sage' : 'warning'}>
+                {r.event_type === 'training' ? 'Training' : 'Eingeladen'}
+              </Pill>
+              <span className="text-xs text-text-muted">{MEAL_TYPE_LABELS[r.meal_type]}</span>
+              <span className="flex-1 text-sm text-text min-w-0 truncate">{r.recipes?.name ?? '—'}</span>
+              <button
+                onClick={async () => { await deleteEventRule(r.id); await load() }}
+                aria-label="Regel löschen"
+                className="tap-inline text-text-faint hover:text-danger px-1"
+              >×</button>
+            </li>
           ))}
-          <div className="px-5 py-3 flex gap-2" style={{ borderTop: categories.length > 0 ? '1px solid #f1f5f9' : 'none' }}>
-            <input
-              type="text"
-              value={newCatName}
-              onChange={e => setNewCatName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addCategory()}
-              placeholder="Neue Kategorie…"
-              className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-              style={{ border: '1px solid #e2e8f0', color: '#1e293b' }}
-            />
-            <button onClick={addCategory} disabled={!newCatName.trim() || savingCat}
-              className="px-3 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
-              style={{ background: '#475569' }}>
-              +
-            </button>
+        </ul>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <select
+              value={newEvent}
+              onChange={e => setNewEvent(e.target.value as 'training' | 'eingeladen')}
+              className="flex-1 min-h-11 px-3 rounded-button bg-surface-alt border border-border text-text text-sm outline-none"
+            >
+              <option value="training">Training</option>
+              <option value="eingeladen">Eingeladen</option>
+            </select>
+            <select
+              value={newMealType}
+              onChange={e => setNewMealType(e.target.value as MealTypeKey)}
+              className="flex-1 min-h-11 px-3 rounded-button bg-surface-alt border border-border text-text text-sm outline-none"
+            >
+              {MEAL_TYPE_ORDER.map(t => <option key={t} value={t}>{MEAL_TYPE_LABELS[t]}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={newRecipeId}
+              onChange={e => setNewRecipeId(e.target.value)}
+              className="flex-1 min-h-11 px-3 rounded-button bg-surface-alt border border-border text-text text-sm outline-none"
+            >
+              <option value="">Rezept wählen…</option>
+              {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+            <Button
+              disabled={!newRecipeId}
+              onClick={async () => {
+                try {
+                  await addEventRule(newEvent, newMealType, newRecipeId)
+                  setNewRecipeId('')
+                  await load()
+                } catch (e) {
+                  toast(e instanceof Error ? e.message : 'Regel konnte nicht angelegt werden', 'error')
+                }
+              }}
+            >+</Button>
           </div>
         </div>
-      </div>
+      </Card>
 
-      {/* Save */}
-      <button
-        onClick={handleSave}
-        className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all"
-        style={saved ? { background: '#16a34a' } : { background: '#475569' }}
-      >
-        {saved ? 'Gespeichert ✓' : 'Speichern'}
-      </button>
+      {/* Lebensmittel-Kategorien */}
+      <Card className="mb-4">
+        <CardLabel>Lebensmittel-Kategorien</CardLabel>
+
+        <div className="flex flex-wrap gap-2 my-3">
+          {categories.length === 0 && <span className="text-sm text-text-faint">Noch keine Kategorien.</span>}
+          {categories.map(c => (
+            <span key={c.id} className="inline-flex items-center gap-1 rounded-pill bg-surface-alt px-3 py-1.5">
+              <span className="text-xs font-semibold text-text-secondary">{c.name}</span>
+              <button
+                onClick={async () => { await deleteFoodCategory(c.id); await load() }}
+                aria-label={`${c.name} löschen`}
+                className="tap-inline text-text-faint hover:text-danger"
+              >×</button>
+            </span>
+          ))}
+        </div>
+
+        <form
+          className="flex gap-2"
+          onSubmit={async e => {
+            e.preventDefault()
+            if (!newCat.trim()) return
+            try { await createFoodCategory(newCat.trim()); setNewCat(''); await load() }
+            catch (err) { toast(err instanceof Error ? err.message : 'Anlegen fehlgeschlagen', 'error') }
+          }}
+        >
+          <input
+            type="text"
+            value={newCat}
+            onChange={e => setNewCat(e.target.value)}
+            placeholder="Neue Kategorie"
+            className="flex-1 min-h-11 px-3 rounded-button bg-surface-alt border border-border text-text text-sm outline-none placeholder:text-text-faint"
+          />
+          <IconButton label="Kategorie anlegen" variant="primary" type="submit">+</IconButton>
+        </form>
+      </Card>
+
+      {/* Sicherheitshinweis */}
+      <Card>
+        <CardLabel>Sicherheit</CardLabel>
+        <p className="text-xs text-text-muted mt-2">
+          Die Datenbank steht auf <code className="text-text-secondary">allow_all</code> für anonyme Zugriffe.
+          Jeder mit der URL kann alle Daten lesen und schreiben. Details und ein Vorschlag für einen
+          späteren Auth-Schritt stehen in der README.
+        </p>
+      </Card>
     </div>
   )
 }

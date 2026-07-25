@@ -1,521 +1,367 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
-
-interface Food {
-  id: string
-  name: string
-  calories_per_100: number
-  protein_per_100: number
-  cost_per_100: number
-  unit: 'g' | 'ml' | 'stk'
-  category_id: string | null
-  calories_per_100g?: number | null
-  protein_per_100g?: number | null
-}
-
-interface Category {
-  id: string
-  name: string
-}
+import { useState, useEffect, useCallback } from 'react'
+import {
+  listFoods, listFoodCategories, createFood, updateFood, deleteFood, importFoods,
+} from '@/lib/db/foods'
+import type { Food, FoodCategory, FoodUnit } from '@/lib/db/types'
+import { useToast } from '@/components/Toast'
+import Card, { CardLabel } from '@/components/ui/Card'
+import Pill from '@/components/ui/Pill'
+import Button, { IconButton } from '@/components/ui/Button'
 
 interface FoodForm {
   name: string
   calories_per_100: string
   protein_per_100: string
+  carbs_per_100: string
+  fat_per_100: string
   cost_per_100: string
-  unit: 'g' | 'ml' | 'stk'
+  unit: FoodUnit
+  category_id: string
   calories_per_100g: string
   protein_per_100g: string
+}
+
+const EMPTY: FoodForm = {
+  name: '', calories_per_100: '', protein_per_100: '', carbs_per_100: '', fat_per_100: '',
+  cost_per_100: '', unit: 'g', category_id: '', calories_per_100g: '', protein_per_100g: '',
 }
 
 interface ImportRow {
   name: string
   calories_per_100: number
   protein_per_100: number
+  carbs_per_100: number
+  fat_per_100: number
   cost_per_100: number
-  unit: 'g' | 'ml' | 'stk'
-  error?: string
+  unit: FoodUnit
 }
 
-const emptyForm: FoodForm = {
-  name: '', calories_per_100: '', protein_per_100: '', cost_per_100: '', unit: 'g',
-  calories_per_100g: '', protein_per_100g: '',
-}
-
+/**
+ * Zeilenweiser Import.
+ *
+ * Format: Name; kcal; Protein; Kosten; Einheit[; KH; Fett]
+ * Trennzeichen ist Semikolon oder Komma. Kohlenhydrate und Fett sind optional
+ * und stehen am Ende, damit bestehende Listen unverändert funktionieren.
+ */
 function parseImportText(text: string): ImportRow[] {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
   const rows: ImportRow[] = []
-  for (const line of lines) {
+  for (const line of text.split('\n').map(l => l.trim()).filter(Boolean)) {
     const sep = line.includes(';') ? ';' : ','
     const parts = line.split(sep).map(p => p.trim())
     if (parts.length < 2) continue
-    const [name, kcalRaw, proteinRaw, costRaw, unitRaw] = parts
+    const [name, kcalRaw, proteinRaw, costRaw, unitRaw, carbsRaw, fatRaw] = parts
     if (!name) continue
-    const kcal = parseFloat(kcalRaw?.replace(',', '.') || '0')
-    const protein = parseFloat(proteinRaw?.replace(',', '.') || '0')
-    const cost = parseFloat(costRaw?.replace(',', '.') || '0')
-    const unitClean = (unitRaw || 'g').toLowerCase().trim()
-    const unit: 'g' | 'ml' | 'stk' = unitClean === 'ml' ? 'ml' : unitClean === 'stk' ? 'stk' : 'g'
-    rows.push({ name, calories_per_100: isNaN(kcal) ? 0 : kcal, protein_per_100: isNaN(protein) ? 0 : protein, cost_per_100: isNaN(cost) ? 0 : cost, unit })
+    const num = (v?: string) => {
+      const n = parseFloat((v ?? '').replace(',', '.'))
+      return Number.isFinite(n) ? n : 0
+    }
+    const u = (unitRaw || 'g').toLowerCase().trim()
+    rows.push({
+      name,
+      calories_per_100: num(kcalRaw),
+      protein_per_100:  num(proteinRaw),
+      cost_per_100:     num(costRaw),
+      carbs_per_100:    num(carbsRaw),
+      fat_per_100:      num(fatRaw),
+      unit: u === 'ml' ? 'ml' : u === 'stk' ? 'stk' : 'g',
+    })
   }
   return rows
 }
 
 export default function DatenbankPage() {
+  const { toast } = useToast()
+
   const [foods, setFoods] = useState<Food[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
+  const [categories, setCategories] = useState<FoodCategory[]>([])
   const [search, setSearch] = useState('')
-  const [activeCat, setActiveCat] = useState<string | null>(null) // null = all
-  const [dragOverCat, setDragOverCat] = useState<string | 'none' | null>(null)
-  const [showModal, setShowModal] = useState(false)
+  const [activeCat, setActiveCat] = useState<string | 'none' | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
   const [editing, setEditing] = useState<Food | null>(null)
-  const [form, setForm] = useState<FoodForm>(emptyForm)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState<FoodForm>(EMPTY)
   const [saving, setSaving] = useState(false)
 
-  // Import
   const [showImport, setShowImport] = useState(false)
   const [importText, setImportText] = useState('')
   const [importing, setImporting] = useState(false)
 
-  useEffect(() => { loadFoods() }, [search, activeCat])
-  useEffect(() => { loadCategories() }, [])
-
-  async function loadFoods() {
-    let q = supabase.from('foods').select('*').order('name')
-    if (search.trim()) q = q.ilike('name', `%${search.trim()}%`)
-    if (activeCat === 'none') {
-      q = q.is('category_id', null)
-    } else if (activeCat) {
-      q = q.eq('category_id', activeCat)
+  const load = useCallback(async () => {
+    setError(null)
+    try {
+      const [fs, cs] = await Promise.all([
+        listFoods({ search, categoryId: activeCat }),
+        listFoodCategories(),
+      ])
+      setFoods(fs); setCategories(cs)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Lebensmittel konnten nicht geladen werden')
+    } finally {
+      setLoading(false)
     }
-    const { data } = await q
-    setFoods(data || [])
-  }
+  }, [search, activeCat])
 
-  async function loadCategories() {
-    const { data } = await supabase.from('food_categories').select('id, name').order('name')
-    setCategories(data || [])
-  }
-
-  async function assignCategory(foodId: string, categoryId: string | null) {
-    await supabase.from('foods').update({ category_id: categoryId }).eq('id', foodId)
-    await loadFoods()
-  }
+  useEffect(() => { void Promise.resolve().then(load) }, [load])
 
   function openAdd() {
-    setEditing(null)
-    setForm(emptyForm)
-    setShowModal(true)
+    setEditing(null); setForm(EMPTY); setShowForm(true)
   }
 
-  function openEdit(food: Food) {
-    setEditing(food)
+  function openEdit(f: Food) {
+    setEditing(f)
     setForm({
-      name:             food.name,
-      calories_per_100: String(food.calories_per_100),
-      protein_per_100:  String(food.protein_per_100),
-      cost_per_100:     String(food.cost_per_100),
-      unit:             food.unit as 'g' | 'ml' | 'stk',
-      calories_per_100g: food.calories_per_100g != null ? String(food.calories_per_100g) : '',
-      protein_per_100g:  food.protein_per_100g != null ? String(food.protein_per_100g) : '',
+      name: f.name,
+      calories_per_100: String(f.calories_per_100),
+      protein_per_100:  String(f.protein_per_100),
+      carbs_per_100:    String(f.carbs_per_100),
+      fat_per_100:      String(f.fat_per_100),
+      cost_per_100:     String(f.cost_per_100),
+      unit: f.unit,
+      category_id: f.category_id ?? '',
+      calories_per_100g: f.calories_per_100g != null ? String(f.calories_per_100g) : '',
+      protein_per_100g:  f.protein_per_100g  != null ? String(f.protein_per_100g)  : '',
     })
-    setShowModal(true)
+    setShowForm(true)
   }
 
-  async function save() {
-    if (!form.name || form.calories_per_100 === '') return
+  async function handleSave() {
+    if (!form.name.trim()) return
     setSaving(true)
-    const data: Record<string, unknown> = {
-      name:             form.name.trim(),
-      calories_per_100: parseFloat(form.calories_per_100),
-      protein_per_100:  parseFloat(form.protein_per_100) || 0,
-      cost_per_100:     parseFloat(form.cost_per_100) || 0,
-      unit:             form.unit,
-      calories_per_100g: form.unit === 'stk' && form.calories_per_100g ? parseFloat(form.calories_per_100g) : null,
-      protein_per_100g:  form.unit === 'stk' && form.protein_per_100g ? parseFloat(form.protein_per_100g) : null,
+    const num = (v: string) => {
+      const n = parseFloat(v.replace(',', '.'))
+      return Number.isFinite(n) ? n : 0
     }
-    if (editing) {
-      await supabase.from('foods').update(data).eq('id', editing.id)
-    } else {
-      await supabase.from('foods').insert(data)
+    const data = {
+      name: form.name.trim(),
+      calories_per_100: num(form.calories_per_100),
+      protein_per_100:  num(form.protein_per_100),
+      carbs_per_100:    num(form.carbs_per_100),
+      fat_per_100:      num(form.fat_per_100),
+      cost_per_100:     num(form.cost_per_100),
+      unit: form.unit,
+      category_id: form.category_id || null,
+      // Nur bei Stückware: erlaubt zusätzlich die Erfassung in Gramm.
+      calories_per_100g: form.unit === 'stk' && form.calories_per_100g ? num(form.calories_per_100g) : null,
+      protein_per_100g:  form.unit === 'stk' && form.protein_per_100g  ? num(form.protein_per_100g)  : null,
     }
-    setSaving(false)
-    setShowModal(false)
-    await loadFoods()
-  }
-
-  async function remove(id: string) {
-    if (!confirm('Lebensmittel wirklich löschen?')) return
-    await supabase.from('foods').delete().eq('id', id)
-    await loadFoods()
+    try {
+      if (editing) await updateFood(editing.id, data)
+      else await createFood(data)
+      setShowForm(false)
+      await load()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Speichern fehlgeschlagen', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function runImport() {
-    const rows = parseImportText(importText)
-    if (!rows.length) return
+    const parsed = parseImportText(importText)
+    if (parsed.length === 0) return
     setImporting(true)
-    await supabase.from('foods').upsert(
-      rows.map(r => ({
-        name: r.name,
-        calories_per_100: r.calories_per_100,
-        protein_per_100: r.protein_per_100,
-        cost_per_100: r.cost_per_100,
-        unit: r.unit,
-      })),
-      { onConflict: 'name', ignoreDuplicates: false }
-    )
-    setImporting(false)
-    setShowImport(false)
-    setImportText('')
-    await loadFoods()
+    try {
+      await importFoods(parsed)
+      setImportText(''); setShowImport(false)
+      await load()
+      toast(`${parsed.length} Lebensmittel importiert`, 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Import fehlgeschlagen', 'error')
+    } finally {
+      setImporting(false)
+    }
   }
 
-  const f = (v: string, field: keyof FoodForm) => setForm(prev => ({ ...prev, [field]: v }))
-
-  const inputStyle: React.CSSProperties = {
-    background: 'white',
-    border: '1px solid #e2e8f0',
-    color: '#1e293b',
-    borderRadius: '0.75rem',
-    padding: '0.5rem 0.75rem',
-    fontSize: '0.875rem',
-    outline: 'none',
-    width: '100%',
-  }
-
-  const selectStyle: React.CSSProperties = {
-    background: 'white',
-    border: '1px solid #e2e8f0',
-    color: '#1e293b',
-    borderRadius: '0.75rem',
-    padding: '0.5rem 0.75rem',
-    fontSize: '0.875rem',
-    outline: 'none',
-    width: '100%',
-  }
+  const f = (value: string, key: keyof FoodForm) => setForm(prev => ({ ...prev, [key]: value }))
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <Link href="/einstellungen" className="text-xs font-medium inline-flex items-center gap-1 mb-3" style={{ color: '#64748b' }}>
-        ← Einstellungen
-      </Link>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold" style={{ color: '#1e293b' }}>Lebensmittel-Datenbank</h1>
+    <div className="max-w-lg mx-auto">
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="font-display font-normal text-2xl text-text">Lebensmittel</h1>
         <div className="flex gap-2">
-          <button
-            onClick={() => setShowImport(true)}
-            style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
-          >
-            Importieren
-          </button>
-          <button
-            onClick={openAdd}
-            style={{ background: '#475569' }}
-            className="text-white px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
-          >
-            + Hinzufügen
-          </button>
+          <Button variant="secondary" onClick={() => setShowImport(v => !v)}>Import</Button>
+          <Button onClick={openAdd}>+ Neu</Button>
         </div>
       </div>
 
-      {/* Search */}
+      {showImport && (
+        <Card className="mb-4">
+          <CardLabel>Zeilenweise importieren</CardLabel>
+          <p className="text-xs text-text-muted mt-1 mb-2">
+            Name; kcal; Protein; Kosten; Einheit; KH; Fett — eine Zeile pro Lebensmittel.
+            Kohlenhydrate und Fett sind optional. Gleiche Namen werden aktualisiert.
+          </p>
+          <textarea
+            value={importText}
+            onChange={e => setImportText(e.target.value)}
+            rows={6}
+            placeholder={'Poulet; 165; 31; 2.20; g; 0; 3.6\nReis; 350; 7; 0.25; g; 78; 1'}
+            className="w-full p-3 rounded-inner bg-surface-alt border border-border-soft text-text text-sm outline-none resize-y placeholder:text-text-faint font-mono"
+          />
+          <Button fullWidth className="mt-2" onClick={runImport} disabled={importing || !importText.trim()}>
+            {importing ? 'Importieren…' : `${parseImportText(importText).length} Zeilen importieren`}
+          </Button>
+        </Card>
+      )}
+
       <input
         type="text"
         value={search}
         onChange={e => setSearch(e.target.value)}
         placeholder="Suchen…"
-        style={{ ...inputStyle, marginBottom: '0.75rem' }}
+        className="w-full min-h-11 px-4 mb-3 rounded-button bg-surface border border-border text-text text-sm outline-none placeholder:text-text-faint"
       />
 
-      {/* Category filter pills (also drag-drop zones) */}
-      {categories.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {/* All */}
-          <button
-            onClick={() => setActiveCat(null)}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-            style={activeCat === null ? { background: '#475569', color: 'white' } : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}
-          >Alle</button>
-
-          {categories.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCat(activeCat === cat.id ? null : cat.id)}
-              onDragOver={e => { e.preventDefault(); setDragOverCat(cat.id) }}
-              onDragLeave={() => setDragOverCat(null)}
-              onDrop={e => {
-                e.preventDefault()
-                const foodId = e.dataTransfer.getData('text/plain')
-                if (foodId) assignCategory(foodId, cat.id)
-                setDragOverCat(null)
-              }}
-              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-              style={
-                dragOverCat === cat.id
-                  ? { background: '#475569', color: 'white', transform: 'scale(1.05)' }
-                  : activeCat === cat.id
-                    ? { background: '#475569', color: 'white' }
-                    : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }
-              }
-            >{cat.name}</button>
-          ))}
-
-          {/* Unkategorisiert drop zone */}
-          <button
-            onClick={() => setActiveCat(activeCat === 'none' ? null : 'none')}
-            onDragOver={e => { e.preventDefault(); setDragOverCat('none') }}
-            onDragLeave={() => setDragOverCat(null)}
-            onDrop={e => {
-              e.preventDefault()
-              const foodId = e.dataTransfer.getData('text/plain')
-              if (foodId) assignCategory(foodId, null)
-              setDragOverCat(null)
-            }}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-            style={
-              dragOverCat === 'none'
-                ? { background: '#94a3b8', color: 'white', transform: 'scale(1.05)' }
-                : activeCat === 'none'
-                  ? { background: '#94a3b8', color: 'white' }
-                  : { background: '#f8fafc', color: '#94a3b8', border: '1px dashed #e2e8f0' }
-            }
-          >Unkategorisiert</button>
-        </div>
-      )}
-
-      {categories.length > 0 && (
-        <p className="text-xs mb-3" style={{ color: '#94a3b8' }}>
-          Tipp: Zeilen ziehen und auf eine Kategorie fallen lassen, um sie zuzuordnen.
-        </p>
-      )}
-
-      {/* Table */}
-      <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '1rem', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-              <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>Name</th>
-              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>kcal</th>
-              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>Protein</th>
-              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>CHF</th>
-              <th className="text-right px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>je</th>
-              {categories.length > 0 && <th className="text-left px-4 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#94a3b8' }}>Kategorie</th>}
-              <th className="px-4 py-3 w-28"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {foods.length === 0 && (
-              <tr>
-                <td colSpan={categories.length > 0 ? 7 : 6} className="px-5 py-10 text-center text-sm" style={{ color: '#94a3b8' }}>
-                  {search ? 'Keine Ergebnisse.' : 'Noch keine Lebensmittel eingetragen.'}
-                </td>
-              </tr>
-            )}
-            {foods.map(food => (
-              <tr
-                key={food.id}
-                draggable={categories.length > 0}
-                onDragStart={e => { e.dataTransfer.setData('text/plain', food.id); e.dataTransfer.effectAllowed = 'move' }}
-                style={{ borderTop: '1px solid #f1f5f9', cursor: categories.length > 0 ? 'grab' : 'default' }}
-                className="transition-colors"
-                onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <td className="px-5 py-3 font-medium" style={{ color: '#1e293b' }}>{food.name}</td>
-                <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{food.calories_per_100}</td>
-                <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{food.protein_per_100}g</td>
-                <td className="px-4 py-3 text-right" style={{ color: '#64748b' }}>{Number(food.cost_per_100).toFixed(2)}</td>
-                <td className="px-4 py-3 text-right text-xs" style={{ color: '#94a3b8' }}>
-                  {food.unit === 'stk' ? '1 Stk.' : `100${food.unit}`}
-                  {food.unit === 'stk' && food.calories_per_100g != null && (
-                    <span className="ml-1" style={{ color: '#059669' }}>+g</span>
-                  )}
-                </td>
-                {categories.length > 0 && (
-                  <td className="px-4 py-3">
-                    <select
-                      value={food.category_id || ''}
-                      onChange={e => assignCategory(food.id, e.target.value || null)}
-                      onClick={e => e.stopPropagation()}
-                      className="text-xs rounded-lg px-2 py-1 outline-none"
-                      style={{ border: '1px solid #e2e8f0', color: food.category_id ? '#475569' : '#94a3b8', background: 'white', maxWidth: '8rem' }}
-                    >
-                      <option value="">—</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </td>
-                )}
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => openEdit(food)} className="text-xs mr-3 transition-colors" style={{ color: '#475569' }}
-                    onMouseEnter={e => ((e.target as HTMLElement).style.color = '#1e293b')}
-                    onMouseLeave={e => ((e.target as HTMLElement).style.color = '#475569')}
-                  >Bearbeiten</button>
-                  <button onClick={() => remove(food.id)} className="text-xs transition-colors" style={{ color: '#dc2626' }}
-                    onMouseEnter={e => ((e.target as HTMLElement).style.color = '#b91c1c')}
-                    onMouseLeave={e => ((e.target as HTMLElement).style.color = '#dc2626')}
-                  >Löschen</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 -mx-1 px-1">
+        <Pill variant={activeCat === null ? 'accent' : 'neutral'} onClick={() => setActiveCat(null)}>Alle</Pill>
+        <Pill variant={activeCat === 'none' ? 'accent' : 'neutral'} onClick={() => setActiveCat('none')}>Ohne</Pill>
+        {categories.map(c => (
+          <Pill key={c.id} variant={activeCat === c.id ? 'accent' : 'neutral'} onClick={() => setActiveCat(c.id)}>
+            {c.name}
+          </Pill>
+        ))}
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div
-          className="fixed inset-0 flex items-center justify-center z-50 p-4"
-          style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}
-        >
-          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '1rem' }} className="w-full max-w-md shadow-xl">
-            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #f1f5f9' }}>
-              <h2 className="font-semibold text-sm" style={{ color: '#1e293b' }}>
-                {editing ? 'Lebensmittel bearbeiten' : 'Lebensmittel hinzufügen'}
-              </h2>
-            </div>
-            <div className="p-6 space-y-4">
-              {/* Name */}
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Name</label>
-                <input type="text" value={form.name} onChange={e => f(e.target.value, 'name')}
-                  placeholder="z.B. Haferflocken"
-                  style={inputStyle}
-                />
-              </div>
-              {/* Unit */}
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Einheit</label>
-                <select value={form.unit} onChange={e => f(e.target.value as 'g' | 'ml' | 'stk', 'unit')}
-                  style={selectStyle}
-                >
-                  <option value="g">Gramm (Feststoff)</option>
-                  <option value="ml">Milliliter (Flüssigkeit)</option>
-                  <option value="stk">Stückzahl (pro Stück)</option>
-                </select>
-              </div>
-              {/* Nutrition + cost */}
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: form.unit === 'stk' ? 'kcal / Stück' : `kcal / 100${form.unit}`, field: 'calories_per_100' as const, placeholder: '0', step: '1' },
-                  { label: form.unit === 'stk' ? 'Protein / Stück' : `Protein / 100${form.unit}`, field: 'protein_per_100' as const, placeholder: '0', step: '0.1' },
-                  { label: form.unit === 'stk' ? 'CHF / Stück' : `CHF / 100${form.unit}`, field: 'cost_per_100' as const, placeholder: '0.00', step: '0.01' },
-                ].map(({ label, field, placeholder, step }) => (
-                  <div key={field}>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>{label}</label>
-                    <input type="number" value={form[field]} onChange={e => f(e.target.value, field)}
-                      placeholder={placeholder} min="0" step={step}
-                      style={inputStyle}
-                    />
-                  </div>
-                ))}
-              </div>
-              {form.unit === 'stk' && (
-                <div className="rounded-lg p-3" style={{ background: '#f8fafc', border: '1px solid #f1f5f9' }}>
-                  <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>
-                    Optional: Nährwerte pro 100g (für Eingabe nach Gewicht)
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>kcal / 100g</label>
-                      <input type="number" value={form.calories_per_100g} onChange={e => f(e.target.value, 'calories_per_100g')}
-                        placeholder="0" min="0" step="1"
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Protein / 100g</label>
-                      <input type="number" value={form.protein_per_100g} onChange={e => f(e.target.value, 'protein_per_100g')}
-                        placeholder="0" min="0" step="0.1"
-                        style={inputStyle}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="px-6 py-4 flex justify-end gap-2" style={{ borderTop: '1px solid #f1f5f9' }}>
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-sm rounded-lg transition-colors"
-                style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}
-              >
-                Abbrechen
-              </button>
-              <button
-                onClick={save}
-                disabled={!form.name || saving}
-                className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-40 transition-colors"
-                style={{ background: '#475569' }}
-              >
-                {saving ? 'Speichern…' : 'Speichern'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {loading && <p className="text-sm text-center py-10 text-text-muted">Laden…</p>}
+
+      {error && (
+        <Card className="text-center">
+          <p className="text-sm text-danger mb-3">{error}</p>
+          <Button variant="secondary" onClick={() => { setLoading(true); void load() }}>Erneut versuchen</Button>
+        </Card>
       )}
 
-      {/* Import Modal */}
-      {showImport && (
-        <div
-          className="fixed inset-0 flex items-center justify-center z-50 p-4"
-          style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}
-        >
-          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '1rem' }} className="w-full max-w-lg shadow-xl">
-            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #f1f5f9' }}>
-              <h2 className="font-semibold text-sm" style={{ color: '#1e293b' }}>Lebensmittel importieren</h2>
-              <button onClick={() => { setShowImport(false); setImportText('') }}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
-                style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
+      {!loading && !error && (
+        <Card flush>
+          {foods.length === 0 && (
+            <p className="px-5 py-10 text-center text-sm text-text-muted">Keine Lebensmittel gefunden.</p>
+          )}
+          <ul className="px-5">
+            {foods.map(food => (
+              <li key={food.id} className="border-b border-border-soft last:border-0">
+                <div className="flex items-center gap-2 py-2 min-h-11">
+                  <button onClick={() => openEdit(food)} className="tap-inline flex-1 text-left min-w-0">
+                    <span className="block text-sm text-text truncate">{food.name}</span>
+                    <span className="block text-xs text-text-muted">
+                      {food.calories_per_100} kcal · {food.protein_per_100} g P
+                      {food.carbs_per_100 > 0 && ` · ${food.carbs_per_100} g KH`}
+                      {food.fat_per_100 > 0 && ` · ${food.fat_per_100} g F`}
+                      {food.cost_per_100 > 0 && ` · CHF ${Number(food.cost_per_100).toFixed(2)}`}
+                      <span className="text-text-faint"> / {food.unit === 'stk' ? 'Stk.' : `100 ${food.unit}`}</span>
+                    </span>
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await deleteFood(food.id)
+                      await load()
+                    }}
+                    aria-label={`${food.name} löschen`}
+                    className="tap-inline text-text-faint hover:text-danger px-1"
+                  >×</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* Formular */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-text/30 backdrop-blur-sm">
+          <div className="w-full sm:max-w-md max-h-[90vh] overflow-y-auto bg-surface rounded-t-card sm:rounded-card border border-border shadow-float">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border-soft">
+              <h2 className="font-display font-normal text-lg text-text">
+                {editing ? 'Bearbeiten' : 'Neues Lebensmittel'}
+              </h2>
+              <IconButton label="Schliessen" onClick={() => setShowForm(false)}>×</IconButton>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="rounded-lg p-3 text-xs" style={{ background: '#f8fafc', border: '1px solid #f1f5f9', color: '#64748b' }}>
-                <p className="font-semibold mb-1.5" style={{ color: '#475569' }}>Format (eine Zeile pro Lebensmittel):</p>
-                <p className="font-mono">Name;Kalorien;Protein;CHF;Einheit</p>
-                <p className="font-mono mt-1" style={{ color: '#94a3b8' }}>Haferflocken;370;13;0.80;g</p>
-                <p className="font-mono" style={{ color: '#94a3b8' }}>Hühnerbrust;110;24;1.50;g</p>
-                <p className="font-mono" style={{ color: '#94a3b8' }}>Ei;155;13;0.30;stk</p>
-                <p className="mt-2" style={{ color: '#94a3b8' }}>Trennzeichen: Semikolon oder Komma. Einheit: g, ml oder stk.</p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Liste einfügen</label>
-                <textarea
-                  value={importText}
-                  onChange={e => setImportText(e.target.value)}
-                  placeholder={'Haferflocken;370;13;0.80;g\nHühnerbrust;110;24;1.50;g'}
-                  rows={8}
-                  style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: '0.8rem' }}
+
+            <div className="p-5 flex flex-col gap-3">
+              <Field label="Name">
+                <input
+                  type="text" value={form.name} onChange={e => f(e.target.value, 'name')}
+                  className={inputCls}
                 />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Kalorien"><NumInput value={form.calories_per_100} onChange={v => f(v, 'calories_per_100')} /></Field>
+                <Field label="Protein (g)"><NumInput value={form.protein_per_100} onChange={v => f(v, 'protein_per_100')} /></Field>
+                <Field label="Kohlenhydrate (g)"><NumInput value={form.carbs_per_100} onChange={v => f(v, 'carbs_per_100')} /></Field>
+                <Field label="Fett (g)"><NumInput value={form.fat_per_100} onChange={v => f(v, 'fat_per_100')} /></Field>
+                <Field label="Kosten (CHF)"><NumInput value={form.cost_per_100} onChange={v => f(v, 'cost_per_100')} /></Field>
+                <Field label="Einheit">
+                  <select
+                    value={form.unit}
+                    onChange={e => f(e.target.value, 'unit')}
+                    className={inputCls}
+                  >
+                    <option value="g">pro 100 g</option>
+                    <option value="ml">pro 100 ml</option>
+                    <option value="stk">pro Stück</option>
+                  </select>
+                </Field>
               </div>
-              {importText.trim() && (
-                <div className="text-xs" style={{ color: '#64748b' }}>
-                  {parseImportText(importText).length} Einträge erkannt
+
+              <Field label="Kategorie">
+                <select value={form.category_id} onChange={e => f(e.target.value, 'category_id')} className={inputCls}>
+                  <option value="">Keine</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </Field>
+
+              {form.unit === 'stk' && (
+                <div className="rounded-inner bg-surface-alt p-3">
+                  <CardLabel>Zusätzlich pro 100 g</CardLabel>
+                  <p className="text-xs text-text-muted mt-1 mb-2">
+                    Optional. Damit lässt sich dasselbe Lebensmittel wahlweise in Stück oder in Gramm erfassen.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Kalorien / 100 g"><NumInput value={form.calories_per_100g} onChange={v => f(v, 'calories_per_100g')} /></Field>
+                    <Field label="Protein / 100 g"><NumInput value={form.protein_per_100g} onChange={v => f(v, 'protein_per_100g')} /></Field>
+                  </div>
                 </div>
               )}
             </div>
-            <div className="px-6 py-4 flex justify-end gap-2" style={{ borderTop: '1px solid #f1f5f9' }}>
-              <button
-                onClick={() => { setShowImport(false); setImportText('') }}
-                className="px-4 py-2 text-sm rounded-lg"
-                style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}
-              >
-                Abbrechen
-              </button>
-              <button
-                onClick={runImport}
-                disabled={!importText.trim() || importing}
-                className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-40"
-                style={{ background: '#475569' }}
-              >
-                {importing ? 'Importieren…' : `${parseImportText(importText).length} importieren`}
-              </button>
+
+            <div className="px-5 py-4 border-t border-border-soft flex gap-2">
+              <Button variant="secondary" fullWidth onClick={() => setShowForm(false)}>Abbrechen</Button>
+              <Button fullWidth onClick={handleSave} disabled={saving || !form.name.trim()}>
+                {saving ? 'Speichern…' : 'Speichern'}
+              </Button>
             </div>
           </div>
         </div>
       )}
     </div>
+  )
+}
+
+const inputCls =
+  'w-full min-h-11 px-3 rounded-button bg-surface-alt border border-border text-text text-sm outline-none placeholder:text-text-faint'
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <CardLabel>{label}</CardLabel>
+      {children}
+    </label>
+  )
+}
+
+function NumInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder="0"
+      className={inputCls}
+    />
   )
 }

@@ -3,35 +3,59 @@ export type MealTypeKey = 'fruehstueck' | 'mittagessen' | 'abendessen' | 'snack'
 
 export const MEAL_TYPE_ORDER: MealTypeKey[] = ['fruehstueck', 'mittagessen', 'abendessen', 'snack']
 
-export const MEAL_TYPE_LABELS: Record<string, string> = {
-  fruehstueck:   'Frühstück',
-  mittagessen:   'Mittagessen',
-  abendessen:    'Abendessen',
-  snack:         'Snack',
-  // legacy value – displayed as Mittagessen
-  hauptmahlzeit: 'Mittagessen',
+export const MEAL_TYPE_LABELS: Record<MealTypeKey, string> = {
+  fruehstueck: 'Frühstück',
+  mittagessen: 'Mittagessen',
+  abendessen:  'Abendessen',
+  snack:       'Snack',
 }
 
-/** Visual config for each meal type section in the day view */
-export const MEAL_TYPE_META: Record<MealTypeKey, { label: string; color: string; bg: string; border: string }> = {
-  fruehstueck: { label: 'Frühstück',   color: '#78716c', bg: '#fafaf9', border: '#e7e5e4' },
-  mittagessen: { label: 'Mittagessen', color: '#059669', bg: '#f0fdf4', border: '#bbf7d0' },
-  abendessen:  { label: 'Abendessen',  color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe' },
-  snack:       { label: 'Snack',       color: '#71717a', bg: '#fafafa', border: '#e4e4e7' },
+/**
+ * Farben je Mahlzeit-Typ als Design-Token, nicht als Hex-Wert.
+ *
+ * Die konkreten Werte stehen ausschliesslich im @theme-Block von
+ * app/globals.css (--color-meal-*). Hier stehen nur die daraus erzeugten
+ * Tailwind-Klassen bzw. var()-Referenzen.
+ */
+export const MEAL_TYPE_BG: Record<MealTypeKey, string> = {
+  fruehstueck: 'bg-meal-fruehstueck',
+  mittagessen: 'bg-meal-mittagessen',
+  abendessen:  'bg-meal-abendessen',
+  snack:       'bg-meal-snack',
 }
 
-/** Pill-style colors for dashboards / calendar */
-export const MEAL_TYPE_COLORS: Record<string, string> = {
-  fruehstueck:   '#d97706',
-  mittagessen:   '#059669',
-  abendessen:    '#4f46e5',
-  snack:         '#7c3aed',
-  hauptmahlzeit: '#059669',
+export const MEAL_TYPE_TEXT: Record<MealTypeKey, string> = {
+  fruehstueck: 'text-meal-fruehstueck',
+  mittagessen: 'text-meal-mittagessen',
+  abendessen:  'text-meal-abendessen',
+  snack:       'text-meal-snack',
 }
 
-/** Normalise legacy meal_type values to the canonical 4 types */
-export function normaliseMealType(type: string): MealTypeKey {
-  if (type === 'hauptmahlzeit') return 'mittagessen'
-  if (type === 'fruehstueck' || type === 'mittagessen' || type === 'abendessen' || type === 'snack') return type as MealTypeKey
-  return 'mittagessen'
+/** Für Stellen, die eine CSS-Farbe brauchen statt einer Klasse (z.B. SVG-fill). */
+export const MEAL_TYPE_VAR: Record<MealTypeKey, string> = {
+  fruehstueck: 'var(--color-meal-fruehstueck)',
+  mittagessen: 'var(--color-meal-mittagessen)',
+  abendessen:  'var(--color-meal-abendessen)',
+  snack:       'var(--color-meal-snack)',
+}
+
+/** Type guard for values coming out of the database. */
+export function isMealTypeKey(type: string): type is MealTypeKey {
+  return type === 'fruehstueck' || type === 'mittagessen' || type === 'abendessen' || type === 'snack'
+}
+
+/**
+ * Safe accessors for meal_type values read from the database.
+ *
+ * The CHECK constraints guarantee the four canonical values, but the client
+ * types the columns as plain `string`. These keep the maps strictly typed
+ * while still accepting DB input, and degrade gracefully instead of
+ * rendering `undefined` should a stray value ever appear.
+ */
+export function mealTypeLabel(type: string): string {
+  return isMealTypeKey(type) ? MEAL_TYPE_LABELS[type] : type
+}
+
+export function mealTypeBgClass(type: string): string {
+  return isMealTypeKey(type) ? MEAL_TYPE_BG[type] : MEAL_TYPE_BG.snack
 }
