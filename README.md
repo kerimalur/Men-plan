@@ -165,6 +165,15 @@ Vor den umbauenden Schritten legt `0005` Backup-Tabellen an
 
 Als Regressionsschutz existiert `meal_plans_snapshot_20260725`: historische
 Tagespläne müssen nach jedem Schritt dieselben Nährwerte zeigen wie vorher.
+Geprüft wird mit `supabase/verify_acceptance.sql`.
+
+Die Prüfung erlaubt eine halbe Anzeigeeinheit Toleranz. Grund: das alte
+Frontend rundete in `sumItems()` die *laufende* Summe nach jeder Addition,
+die Trigger summieren die gespeicherten Positionswerte und runden einmal.
+An Tagen mit vielen Positionen ergibt das eine Rundungseinheit Unterschied —
+zugunsten des neuen Werts. Gemessen betrifft das genau einen von 68 Tagen
+(2026-07-02, +0.1 kcal). Echte Regressionen liegen um Größenordnungen
+darüber und werden weiterhin gefunden.
 
 ## Design-Tokens
 

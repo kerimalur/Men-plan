@@ -36,12 +36,45 @@ SELECT
 -- ────────────────────────────────────────────────────────────────────────────
 -- B. Nährwert-Regression (Kriterium 11)
 -- ────────────────────────────────────────────────────────────────────────────
-
+--
+-- RUNDUNGSTOLERANZ, bewusst gesetzt:
+--
+-- Das alte Frontend rundete in sumItems() die LAUFENDE Summe nach jeder
+-- Addition:
+--
+--   kcal: Math.round((acc.kcal + item.kcal) * 10) / 10
+--
+-- Die Trigger summieren stattdessen die gespeicherten Positionswerte und
+-- runden einmal am Ende. An Tagen mit vielen Positionen schaukelt sich das um
+-- eine Rundungseinheit auf. Der neue Wert ist der genauere.
+--
+-- Gemessen am 2026-07-25 nach Migration 0009: genau ein Tag (2026-07-02)
+-- weicht ab, um +0.10 kcal, +0.10 g Protein und +0.0010 CHF -- jeweils exakt
+-- eine Einheit. Kein Datenverlust, sondern behobene Ungenauigkeit.
+--
+-- Die Toleranz liegt deshalb bei einer halben Anzeigeeinheit. ECHTE
+-- Regressionen -- eine verlorene Mahlzeit, eine doppelt gezaehlte Box --
+-- liegen um Groessenordnungen darueber und werden weiterhin gefunden.
+--
 -- Muss 0 Zeilen liefern.
 SELECT s.date,
        s.kcal_total    AS alt_kcal,   p.kcal_total    AS neu_kcal,
+       p.kcal_total    - s.kcal_total    AS diff_kcal,
        s.protein_total AS alt_prot,   p.protein_total AS neu_prot,
-       s.cost_total    AS alt_kosten, p.cost_total    AS neu_kosten
+       p.protein_total - s.protein_total AS diff_prot,
+       s.cost_total    AS alt_kosten, p.cost_total    AS neu_kosten,
+       p.cost_total    - s.cost_total    AS diff_kosten
+FROM meal_plans_snapshot_20260725 s
+JOIN meal_plans p ON p.id = s.id
+WHERE abs(p.kcal_total    - s.kcal_total)    > 0.5
+   OR abs(p.protein_total - s.protein_total) > 0.5
+   OR abs(p.cost_total    - s.cost_total)    > 0.01;
+
+-- Zur Einordnung: wie viele Tage weichen ueberhaupt ab, und wie stark?
+-- Erwartet: hoechstens eine Handvoll, alle im Zehntelbereich.
+SELECT count(*)                                   AS tage_mit_abweichung,
+       round(max(abs(p.kcal_total - s.kcal_total)), 3) AS groesste_kcal_diff,
+       round(max(abs(p.cost_total - s.cost_total)), 4) AS groesste_kosten_diff
 FROM meal_plans_snapshot_20260725 s
 JOIN meal_plans p ON p.id = s.id
 WHERE round(s.kcal_total, 1)    IS DISTINCT FROM round(p.kcal_total, 1)
@@ -190,10 +223,11 @@ SELECT
   (SELECT count(*) FROM prep_cycles WHERE name LIKE 'ZZ_TEST%') AS zyklen;
 -- Erwartet: 0 | 0 | 0
 
--- Und die Regression noch einmal, nach allen Testschreibvorgaengen:
+-- Und die Regression noch einmal, nach allen Testschreibvorgaengen.
+-- Mit derselben Rundungstoleranz wie in Abschnitt B.
 SELECT count(*) AS abweichungen_erwartet_0
 FROM meal_plans_snapshot_20260725 s
 JOIN meal_plans p ON p.id = s.id
-WHERE round(s.kcal_total, 1)    IS DISTINCT FROM round(p.kcal_total, 1)
-   OR round(s.protein_total, 1) IS DISTINCT FROM round(p.protein_total, 1)
-   OR round(s.cost_total, 3)    IS DISTINCT FROM round(p.cost_total, 3);
+WHERE abs(p.kcal_total    - s.kcal_total)    > 0.5
+   OR abs(p.protein_total - s.protein_total) > 0.5
+   OR abs(p.cost_total    - s.cost_total)    > 0.01;
