@@ -119,6 +119,9 @@ export default function HeutePage() {
                 <span className="text-xs text-text-muted ml-1">g Protein</span>
               </div>
             </div>
+            <p className="text-xs text-text-muted mt-2">
+              Geplant: {Math.round(totals.kcal)} kcal · {Math.round(totals.protein)} g Protein
+            </p>
             {fridge > 0 && (
               <p className="text-xs text-sage font-semibold mt-3">
                 Noch {fridge} {fridge === 1 ? 'Portion' : 'Portionen'} im Kühlschrank

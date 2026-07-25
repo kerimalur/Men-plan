@@ -13,6 +13,7 @@ import { toDateStr, DAY_SHORT } from '@/lib/dates'
 import type { Nutrition } from '@/lib/calculations'
 import { useToast } from '@/components/Toast'
 import RecipePicker from '@/components/RecipePicker'
+import RecipeEditModal from '@/components/RecipeEditModal'
 import Card, { CardLabel } from '@/components/ui/Card'
 import Pill from '@/components/ui/Pill'
 import Button, { IconButton } from '@/components/ui/Button'
@@ -115,6 +116,7 @@ function CycleCard({ cycle, onStatus, onDelete, onPortionsChanged }: {
 }) {
   const { toast } = useToast()
   const [editingBatch, setEditingBatch] = useState<string | null>(null)
+  const [editingRecipe, setEditingRecipe] = useState<{ id: string; name: string; portions: number } | null>(null)
   const batches = cycle.prep_batches ?? []
   const days = datesBetween(cycle.start_date, cycle.end_date)
 
@@ -138,10 +140,17 @@ function CycleCard({ cycle, onStatus, onDelete, onPortionsChanged }: {
         {batches.map(b => (
           <div key={b.id} className="rounded-inner bg-surface-alt p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
+              <button
+                onClick={() => setEditingRecipe({
+                  id: b.recipe_id,
+                  name: b.recipes?.name ?? 'Rezept',
+                  portions: b.portions,
+                })}
+                className="tap-inline min-w-0 text-left px-1 -mx-1 rounded-button hover:bg-border-soft"
+              >
                 <p className="text-sm text-text truncate">{b.recipes?.name ?? 'Rezept'}</p>
-                <p className="text-[11px] text-text-muted">{MEAL_TYPE_LABELS[b.meal_type]}</p>
-              </div>
+                <p className="text-[11px] text-text-muted">{MEAL_TYPE_LABELS[b.meal_type]} · Zutaten bearbeiten</p>
+              </button>
               {editingBatch === b.id ? (
                 <div className="w-40">
                   <AmountInput
@@ -188,6 +197,19 @@ function CycleCard({ cycle, onStatus, onDelete, onPortionsChanged }: {
         )}
         <IconButton label="Zyklus löschen" variant="danger" onClick={onDelete}>×</IconButton>
       </div>
+
+      {editingRecipe && (
+        <RecipeEditModal
+          recipeId={editingRecipe.id}
+          recipeName={editingRecipe.name}
+          portions={editingRecipe.portions}
+          onClose={async changed => {
+            setEditingRecipe(null)
+            // Die Werte pro Portion zieht der DB-Trigger nach — hier nur neu laden.
+            if (changed) await onPortionsChanged()
+          }}
+        />
+      )}
     </Card>
   )
 }
@@ -206,6 +228,7 @@ function CyclePlanner({ onCancel, onSaved }: { onCancel: () => void; onSaved: ()
   const [goals, setGoals] = useState({ kcal: Number(DEFAULTS.kcal_ziel), protein: Number(DEFAULTS.protein_ziel) })
   const [saving, setSaving] = useState(false)
   const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [editingDraft, setEditingDraft] = useState<DraftBatch | null>(null)
 
   const days = useMemo(() => {
     const start = cookDate
@@ -340,10 +363,13 @@ function CyclePlanner({ onCancel, onSaved }: { onCancel: () => void; onSaved: ()
           {drafts.map(d => (
             <div key={d.key} className="rounded-inner bg-surface-alt p-3">
               <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="min-w-0">
+                <button
+                  onClick={() => setEditingDraft(d)}
+                  className="tap-inline min-w-0 text-left px-1 -mx-1 rounded-button hover:bg-border-soft"
+                >
                   <p className="text-sm text-text">{d.recipe.name}</p>
-                  <p className="text-[11px] text-text-muted">{MEAL_TYPE_LABELS[d.mealType]}</p>
-                </div>
+                  <p className="text-[11px] text-text-muted">{MEAL_TYPE_LABELS[d.mealType]} · Zutaten bearbeiten</p>
+                </button>
                 <button
                   onClick={() => setDrafts(prev => prev.filter(x => x.key !== d.key))}
                   aria-label="Topf entfernen"
@@ -431,6 +457,27 @@ function CyclePlanner({ onCancel, onSaved }: { onCancel: () => void; onSaved: ()
           usedIds={drafts.map(d => d.recipe.id)}
           onPick={r => addBatch(r, pickingFor)}
           onClose={() => setPickingFor(null)}
+        />
+      )}
+
+      {editingDraft && (
+        <RecipeEditModal
+          recipeId={editingDraft.recipe.id}
+          recipeName={editingDraft.recipe.name}
+          portions={editingDraft.portions}
+          onClose={async changed => {
+            const draft = editingDraft
+            setEditingDraft(null)
+            // Der Entwurf ist noch kein Topf — die Werte pro Portion neu holen,
+            // damit die Tagesvorschau stimmt.
+            if (!changed) return
+            try {
+              const per = await perPortionValues(draft.recipe.id)
+              setDrafts(prev => prev.map(x => x.recipe.id === draft.recipe.id ? { ...x, per } : x))
+            } catch (e) {
+              toast(e instanceof Error ? e.message : 'Rezept konnte nicht neu geladen werden', 'error')
+            }
+          }}
         />
       )}
     </div>

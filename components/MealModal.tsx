@@ -5,7 +5,9 @@ import { getFoodsByIds, searchFoods, createFood } from '@/lib/db/foods'
 import { calcNutrition, sumItems } from '@/lib/calculations'
 import type { MealTypeKey } from '@/lib/mealTypes'
 import type { Recipe } from '@/lib/db/types'
+import { formatAmount, toBaseUnit } from '@/lib/units'
 import RecipePicker from '@/components/RecipePicker'
+import AmountInput from '@/components/ui/AmountInput'
 
 const MEAL_TYPE_LABELS: Record<string, string> = {
   fruehstueck: 'Frühstück',
@@ -86,6 +88,9 @@ export default function MealModal({ mealType, onClose, onSave, existingMeal }: P
   // Amount input
   const [amount, setAmount] = useState('')
   const [unit, setUnit] = useState('g')
+
+  // Inline-Bearbeitung einer bereits erfassten Zutat
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
 
   // Rezept als Startpunkt laden bzw. die Mahlzeit als Rezept sichern
   const [showRecipes, setShowRecipes] = useState(false)
@@ -172,6 +177,30 @@ export default function MealModal({ mealType, onClose, onSave, existingMeal }: P
 
   function removeItem(i: number) {
     setItems(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  /**
+   * Menge einer bereits erfassten Zutat ändern.
+   *
+   * Nährwerte und Kosten skalieren proportional — dieselbe Rechnung wie
+   * updateMealItemAmount() in lib/db/plans.ts. Das kommt ohne erneuten Zugriff
+   * auf das Lebensmittel aus und funktioniert auch für Direkteingaben.
+   */
+  function setItemAmount(index: number, newAmount: number) {
+    setEditingIndex(null)
+    setItems(prev => prev.map((it, i) => {
+      if (i !== index || newAmount <= 0 || it.amount <= 0 || newAmount === it.amount) return it
+      const r = newAmount / it.amount
+      return {
+        ...it,
+        amount:  newAmount,
+        kcal:    Math.round(it.kcal    * r * 10)   / 10,
+        protein: Math.round(it.protein * r * 10)   / 10,
+        carbs:   Math.round(it.carbs   * r * 10)   / 10,
+        fat:     Math.round(it.fat     * r * 10)   / 10,
+        cost:    Math.round(it.cost    * r * 1000) / 1000,
+      }
+    }))
   }
 
   function addCustomItem() {
@@ -659,40 +688,63 @@ export default function MealModal({ mealType, onClose, onSave, existingMeal }: P
                 className="rounded-lg overflow-hidden"
                 style={{ border: '1px solid var(--color-border-soft)' }}
               >
-                {items.map((item, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between px-3 py-2"
-                    style={i > 0 ? { borderTop: '1px solid var(--color-border-soft)' } : {}}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{item.food_name}</span>
-                      {item.isCustom && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ background: 'var(--color-warning-soft)', color: 'var(--color-warning)' }}>eigen</span>
-                      )}
-                      {item.isQuick && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ background: 'var(--color-sage-soft)', color: 'var(--color-sage)' }}>schnell</span>
-                      )}
-                      {!item.isQuick && (
-                        <span className="text-xs shrink-0" style={{ color: 'var(--color-text-secondary)' }}>{item.amount}{item.unit}</span>
+                {items.map((item, i) => {
+                  const base = toBaseUnit(item.amount, item.unit)
+                  return (
+                    <div
+                      key={i}
+                      className="px-3 py-2"
+                      style={i > 0 ? { borderTop: '1px solid var(--color-border-soft)' } : {}}
+                    >
+                      {editingIndex === i ? (
+                        <div>
+                          <p className="text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>{item.food_name}</p>
+                          <AmountInput
+                            value={item.amount}
+                            unit={item.unit}
+                            onCommit={v => setItemAmount(i, v)}
+                            onCancel={() => setEditingIndex(null)}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{item.food_name}</span>
+                            {item.isCustom && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ background: 'var(--color-warning-soft)', color: 'var(--color-warning)' }}>eigen</span>
+                            )}
+                            {item.isQuick && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ background: 'var(--color-sage-soft)', color: 'var(--color-sage)' }}>schnell</span>
+                            )}
+                            {!item.isQuick && (
+                              <button
+                                onClick={() => setEditingIndex(i)}
+                                className="text-xs shrink-0 px-2 py-0.5 rounded-lg transition-colors"
+                                style={{ color: 'var(--color-text-secondary)', background: 'var(--color-border-soft)' }}
+                              >
+                                {formatAmount(base.amount, base.unit)}
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 ml-3">
+                            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{item.kcal} kcal</span>
+                            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{item.protein}g P</span>
+                            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>CHF {item.cost.toFixed(2)}</span>
+                            <button
+                              onClick={() => removeItem(i)}
+                              className="text-base leading-none transition-colors"
+                              style={{ color: 'var(--color-accent)' }}
+                              onMouseEnter={e => ((e.target as HTMLElement).style.color = 'var(--color-danger)')}
+                              onMouseLeave={e => ((e.target as HTMLElement).style.color = 'var(--color-accent)')}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 shrink-0 ml-3">
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{item.kcal} kcal</span>
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{item.protein}g P</span>
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>CHF {item.cost.toFixed(2)}</span>
-                      <button
-                        onClick={() => removeItem(i)}
-                        className="text-base leading-none transition-colors"
-                        style={{ color: 'var(--color-accent)' }}
-                        onMouseEnter={e => ((e.target as HTMLElement).style.color = 'var(--color-danger)')}
-                        onMouseLeave={e => ((e.target as HTMLElement).style.color = 'var(--color-accent)')}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               {/* Totals */}
               <div className="flex gap-4 mt-2 px-3 text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>

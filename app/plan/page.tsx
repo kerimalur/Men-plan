@@ -214,7 +214,10 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
               <span className="text-xs text-text-muted ml-1">g Protein</span>
             </div>
           </div>
-          <p className="text-xs text-text-faint mt-2">
+          <p className="text-xs text-text-muted mt-2">
+            Geplant: {Math.round(totals.kcal)} kcal · {Math.round(totals.protein)} g Protein
+          </p>
+          <p className="text-xs text-text-faint mt-1">
             Freier Tag — der Zyklus-Planer weist hier keine Boxen zu.
           </p>
         </Card>
