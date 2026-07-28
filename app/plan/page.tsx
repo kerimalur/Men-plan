@@ -557,17 +557,19 @@ function MealBlock({
 function WeekView({ date, goals, onPick }: { date: string; goals: Goals; onPick: (d: string) => void }) {
   const [plans, setPlans] = useState<MealPlan[]>([])
   const [markers, setMarkers] = useState<DayMarker[]>([])
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [dayAction, setDayAction] = useState<{ type: CopyDayMode; date: string } | null>(null)
   const days = useMemo(() => getWeekDays(new Date(`${date}T12:00:00`)).map(toDateStr), [date])
 
-  useEffect(() => {
-    void Promise.resolve().then(async () => {
-      const [p, m] = await Promise.all([
-        getPlansInRange(days[0], days[6]),
-        getMarkersInRange(days[0], days[6]),
-      ])
-      setPlans(p); setMarkers(m)
-    })
+  const load = useCallback(async () => {
+    const [p, m] = await Promise.all([
+      getPlansInRange(days[0], days[6]),
+      getMarkersInRange(days[0], days[6]),
+    ])
+    setPlans(p); setMarkers(m)
   }, [days])
+
+  useEffect(() => { void Promise.resolve().then(load) }, [load])
 
   const byDate = new Map(plans.map(p => [p.date, p]))
   const markerByDate = new Map(markers.map(m => [m.date, m]))
@@ -592,29 +594,98 @@ function WeekView({ date, goals, onPick }: { date: string; goals: Goals; onPick:
           const pct = goals.kcal > 0 ? Math.min(kcal / goals.kcal, 1) : 0
           const free = markerByDate.get(d)?.is_free
           return (
-            <Card key={d} nested onClick={() => onPick(d)} className="!py-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-sm font-semibold text-text">
-                  {DAY_SHORT[i]} {new Date(`${d}T12:00:00`).getDate()}.
-                </span>
-                <div className="flex items-center gap-2">
-                  {free && <Pill variant="neutral">frei</Pill>}
-                  <span className={`text-sm font-semibold ${kcal > goals.kcal ? 'text-danger' : 'text-text-secondary'}`}>
-                    {Math.round(kcal)} kcal
+            <div key={d} className="relative">
+              <Card nested onClick={() => onPick(d)} className={`!py-3 ${kcal > 0 ? '!pr-14' : ''}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-sm font-semibold text-text">
+                    {DAY_SHORT[i]} {new Date(`${d}T12:00:00`).getDate()}.
                   </span>
+                  <div className="flex items-center gap-2">
+                    {free && <Pill variant="neutral">frei</Pill>}
+                    <span className={`text-sm font-semibold ${kcal > goals.kcal ? 'text-danger' : 'text-text-secondary'}`}>
+                      {Math.round(kcal)} kcal
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className="h-1.5 w-full rounded-pill bg-border overflow-hidden">
-                <div
-                  className={`h-full rounded-pill ${kcal > goals.kcal ? 'bg-danger' : 'bg-success'}`}
-                  style={{ width: `${pct * 100}%` }}
+                <div className="h-1.5 w-full rounded-pill bg-border overflow-hidden">
+                  <div
+                    className={`h-full rounded-pill ${kcal > goals.kcal ? 'bg-danger' : 'bg-success'}`}
+                    style={{ width: `${pct * 100}%` }}
+                  />
+                </div>
+              </Card>
+
+              {kcal > 0 && (
+                <DayMenu
+                  date={d}
+                  open={menuFor === d}
+                  onToggle={() => setMenuFor(cur => cur === d ? null : d)}
+                  onAction={type => { setMenuFor(null); setDayAction({ type, date: d }) }}
+                  anchor="right-2 top-1/2 -translate-y-1/2"
+                  buttonClass="w-10 h-10 text-base text-text-muted"
                 />
-              </div>
-            </Card>
+              )}
+            </div>
           )
         })}
       </div>
+
+      {menuFor && <div className="fixed inset-0 z-20" onClick={() => setMenuFor(null)} />}
+
+      {dayAction && (
+        <CopyDayModal
+          date={dayAction.date}
+          mode={dayAction.type}
+          onClose={() => setDayAction(null)}
+          onDone={() => { setDayAction(null); void load() }}
+        />
+      )}
     </>
+  )
+}
+
+/**
+ * ⋯-Menü einer Tag-Kachel. Sitzt absolut im Wrapper und ist bewusst ein
+ * Geschwister der Kachel — verschachtelte Buttons wären ungültiges HTML und
+ * der Klick auf das Menü würde die Kachel mit auslösen.
+ */
+function DayMenu({ date, open, onToggle, onAction, anchor, buttonClass }: {
+  date: string
+  open: boolean
+  onToggle: () => void
+  onAction: (mode: CopyDayMode) => void
+  /** Positionsklassen des Ankers innerhalb des Kachel-Wrappers. */
+  anchor: string
+  buttonClass: string
+}) {
+  return (
+    <div className={`absolute z-30 ${anchor}`}>
+      <button
+        aria-label={`Aktionen für ${date}`}
+        aria-expanded={open}
+        onClick={onToggle}
+        className={`rounded-inner flex items-center justify-center leading-none ${buttonClass}`}
+      >
+        ⋯
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 min-w-max py-1 bg-surface rounded-inner border border-border shadow-float">
+          <button
+            onClick={() => onAction('copy')}
+            className="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface-alt"
+          >
+            Tag kopieren
+          </button>
+          <button
+            onClick={() => onAction('move')}
+            className="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface-alt"
+          >
+            Tag verschieben
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -715,34 +786,14 @@ function MonthView({ date, goals, onPick }: { date: string; goals: Goals; onPick
                 </button>
 
                 {kcal > 0 && (
-                  <>
-                    <button
-                      aria-label={`Aktionen für ${d}`}
-                      aria-expanded={menuFor === d}
-                      onClick={() => setMenuFor(cur => cur === d ? null : d)}
-                      className={`absolute top-0 right-0 w-7 h-7 rounded-inner flex items-center justify-center
-                        text-xs leading-none ${isToday ? 'text-surface-alt' : 'text-text-muted'}`}
-                    >
-                      ⋯
-                    </button>
-
-                    {menuFor === d && (
-                      <div className="absolute top-7 right-0 z-30 min-w-max py-1 bg-surface rounded-inner border border-border shadow-float">
-                        <button
-                          onClick={() => { setMenuFor(null); setDayAction({ type: 'copy', date: d }) }}
-                          className="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface-alt"
-                        >
-                          Tag kopieren
-                        </button>
-                        <button
-                          onClick={() => { setMenuFor(null); setDayAction({ type: 'move', date: d }) }}
-                          className="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface-alt"
-                        >
-                          Tag verschieben
-                        </button>
-                      </div>
-                    )}
-                  </>
+                  <DayMenu
+                    date={d}
+                    open={menuFor === d}
+                    onToggle={() => setMenuFor(cur => cur === d ? null : d)}
+                    onAction={type => { setMenuFor(null); setDayAction({ type, date: d }) }}
+                    anchor="top-0 right-0"
+                    buttonClass={`w-7 h-7 text-xs ${isToday ? 'text-surface-alt' : 'text-text-muted'}`}
+                  />
                 )}
               </div>
             )

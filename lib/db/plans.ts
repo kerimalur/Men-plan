@@ -34,59 +34,133 @@ export async function deletePlan(id: string): Promise<void> {
   ok(await supabase.from('meal_plans').delete().eq('id', id), 'Tagesplan löschen')
 }
 
+export interface DayEntrySelection {
+  /** IDs aus `meals` — frei geplante Mahlzeiten. */
+  mealIds: string[]
+  /** IDs aus `batch_portions` — vorgekochte Boxen. */
+  portionIds: string[]
+}
+
+export interface TransferResult {
+  meals: number
+  portions: number
+  /**
+   * Boxen, die nicht übertragen wurden, weil am Zieltag im selben Slot bereits
+   * eine Box aus demselben Topf liegt — `UNIQUE (batch_id, date, meal_type)`
+   * aus Migration 0007.
+   */
+  skippedPortions: number
+}
+
 /**
- * Überträgt die freien Mahlzeiten eines Tages auf ein anderes Datum.
+ * Überträgt ausgewählte Einträge eines Tages auf ein anderes Datum.
  *
- * `copy` lässt den Quelltag stehen, `move` löscht den Quell-Tagesplan danach —
- * die Kaskade aus 0001 räumt Mahlzeiten und Positionen mit weg. Ein bereits
- * geplanter Zieltag wird ergänzt, nicht ersetzt: meals hat keine Eindeutigkeit
- * auf (plan_id, meal_type), zwei Mittagessen sind also erlaubt.
+ * Beide Quellen der Tagesansicht sind übertragbar: frei geplante Mahlzeiten
+ * und vorgekochte Boxen. Sobald eine Box einem Tag zugeordnet ist, ist sie
+ * Tagesplanung — der Prep-Zyklus bleibt beim Verschieben unangetastet, seine
+ * Einkaufs- und Kochliste ändert sich dadurch nicht.
  *
- * Summen werden NICHT von Hand gerechnet — die Trigger aus 0004 ziehen sie
- * beim Insert der Positionen über meals bis in meal_plans nach.
+ * Ein bereits geplanter Zieltag wird ergänzt, nicht ersetzt: `meals` hat keine
+ * Eindeutigkeit auf (plan_id, meal_type), zwei Mittagessen sind erlaubt.
  *
- * Vorgekochte Boxen (`batch_portions`) bleiben unberührt. Sie hängen an einem
- * Topf des Prep-Zyklus und existieren physisch genau einmal; sie liessen sich
- * weder kopieren noch sinnvoll ohne den Zyklus verschieben.
+ * Summen werden NICHT von Hand gerechnet. Die Trigger aus 0004 und 0007
+ * behandeln den Tageswechsel ausdrücklich und rechnen Quell- UND Zieltag neu.
  *
- * Häkchen: beim Kopieren beginnt der Zieltag ungegessen, beim Verschieben
- * wandert der Stand mit (dieselbe Mahlzeit, nur an einem anderen Tag).
- *
- * @returns Anzahl übertragener Mahlzeiten
+ * Häkchen: beim Verschieben wandert der Stand mit (dieselbe Mahlzeit, nur an
+ * einem anderen Tag), beim Kopieren beginnt der Zieltag ungegessen.
  */
-export async function copyDayMeals(
+export async function transferDayEntries(
   fromDate: string,
   toDate: string,
-  mode: 'copy' | 'move' = 'copy',
-): Promise<number> {
-  if (fromDate === toDate) return 0
+  mode: 'copy' | 'move',
+  selection: DayEntrySelection,
+): Promise<TransferResult> {
+  const empty: TransferResult = { meals: 0, portions: 0, skippedPortions: 0 }
+  if (fromDate === toDate) return empty
 
   const source = await getPlanByDate(fromDate)
-  if (!source) return 0
 
-  const meals = await getMealsForPlan(source.id)
-  if (meals.length > 0) {
-    const target = await ensurePlan(toDate)
-    for (const m of meals) {
-      const copy = await createMeal(target.id, m.meal_type, m.name)
-      await addMealItems((m.meal_items ?? []).map(i => ({
-        meal_id:   copy.id,
-        food_id:   i.food_id,
-        food_name: i.food_name,
-        amount:    i.amount,
-        unit:      i.unit,
-        kcal:      i.kcal,
-        protein:   i.protein,
-        carbs:     i.carbs,
-        fat:       i.fat,
-        cost:      i.cost,
-        eaten:     mode === 'move' ? i.eaten : false,
-      })))
+  const sourceMeals = source && selection.mealIds.length > 0
+    ? (await getMealsForPlan(source.id)).filter(m => selection.mealIds.includes(m.id))
+    : []
+
+  const sourcePortions = selection.portionIds.length > 0
+    ? rows<BatchPortion>(
+        await supabase.from('batch_portions')
+          .select('id, batch_id, date, meal_type, consumed')
+          .in('id', selection.portionIds),
+        'Boxen laden'
+      )
+    : []
+
+  if (sourceMeals.length === 0 && sourcePortions.length === 0) return empty
+
+  const target = await ensurePlan(toDate)
+
+  // ── Mahlzeiten ──
+  for (const m of sourceMeals) {
+    if (mode === 'move') {
+      // Umhängen statt kopieren+löschen: erhält Positionen, IDs und Häkchen.
+      await moveMeal(m.id, target.id, m.meal_type)
+      continue
     }
+    const copy = await createMeal(target.id, m.meal_type, m.name)
+    await addMealItems((m.meal_items ?? []).map(i => ({
+      meal_id:   copy.id,
+      food_id:   i.food_id,
+      food_name: i.food_name,
+      amount:    i.amount,
+      unit:      i.unit,
+      kcal:      i.kcal,
+      protein:   i.protein,
+      carbs:     i.carbs,
+      fat:       i.fat,
+      cost:      i.cost,
+      eaten:     false,
+    })))
   }
 
-  if (mode === 'move') await deletePlan(source.id)
-  return meals.length
+  // ── Boxen ──
+  const taken = new Set(
+    rows<Pick<BatchPortion, 'batch_id' | 'meal_type'>>(
+      await supabase.from('batch_portions').select('batch_id, meal_type').eq('date', toDate),
+      'Belegte Boxen am Zieltag prüfen'
+    ).map(p => `${p.batch_id}|${p.meal_type}`)
+  )
+
+  let portions = 0
+  let skippedPortions = 0
+  for (const p of sourcePortions) {
+    const key = `${p.batch_id}|${p.meal_type}`
+    if (taken.has(key)) { skippedPortions++; continue }
+
+    if (mode === 'move') {
+      ok(
+        await supabase.from('batch_portions').update({ date: toDate }).eq('id', p.id),
+        'Box verschieben'
+      )
+    } else {
+      ok(
+        await supabase.from('batch_portions').insert({ batch_id: p.batch_id, date: toDate, meal_type: p.meal_type }),
+        'Box kopieren'
+      )
+    }
+    taken.add(key)
+    portions++
+  }
+
+  // Quelltag komplett geleert: der leere Tagesplan kann weg. Solange noch
+  // irgendetwas darauf liegt, bleibt er stehen.
+  if (mode === 'move' && source) {
+    const restMeals = await getMealsForPlan(source.id)
+    const restPortions = rows<Pick<BatchPortion, 'id'>>(
+      await supabase.from('batch_portions').select('id').eq('date', fromDate),
+      'Restliche Boxen prüfen'
+    )
+    if (restMeals.length === 0 && restPortions.length === 0) await deletePlan(source.id)
+  }
+
+  return { meals: sourceMeals.length, portions, skippedPortions }
 }
 
 // ── Mahlzeiten (freie Tage, Ad-hoc) ─────────────────────────────────────────
