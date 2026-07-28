@@ -16,6 +16,7 @@ import { formatAmount, toBaseUnit } from '@/lib/units'
 import { useSwipe } from '@/lib/useSwipe'
 import { useToast } from '@/components/Toast'
 import MealModal, { type ExistingMeal } from '@/components/MealModal'
+import CopyDayModal, { type CopyDayMode } from '@/components/CopyDayModal'
 import QuickAddItem, { type QuickItem } from '@/components/QuickAddItem'
 import Card, { CardLabel } from '@/components/ui/Card'
 import Pill, { MealTypePill } from '@/components/ui/Pill'
@@ -623,16 +624,21 @@ function MonthView({ date, goals, onPick }: { date: string; goals: Goals; onPick
   const cursor = new Date(`${date}T12:00:00`)
   const [month, setMonth] = useState({ y: cursor.getFullYear(), m: cursor.getMonth() })
   const [plans, setPlans] = useState<MealPlan[]>([])
+  /** Tag, dessen ⋯-Menü offen ist. */
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [dayAction, setDayAction] = useState<{ type: CopyDayMode; date: string } | null>(null)
 
   const first = new Date(month.y, month.m, 1)
   const last = new Date(month.y, month.m + 1, 0)
 
-  useEffect(() => {
-    void Promise.resolve().then(async () => {
-      setPlans(await getPlansInRange(toDateStr(first), toDateStr(last)))
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(async () => {
+    setPlans(await getPlansInRange(
+      toDateStr(new Date(month.y, month.m, 1)),
+      toDateStr(new Date(month.y, month.m + 1, 0)),
+    ))
   }, [month.y, month.m])
+
+  useEffect(() => { void Promise.resolve().then(load) }, [load])
 
   const byDate = new Map(plans.map(p => [p.date, p]))
   const todayStr = toDateStr(new Date())
@@ -691,23 +697,71 @@ function MonthView({ date, goals, onPick }: { date: string; goals: Goals; onPick
                   ? 'bg-warning-soft text-text'
                   : 'bg-transparent text-text-muted'
 
+            // Kachel und ⋯-Button sind Geschwister in einem relativ
+            // positionierten Wrapper — verschachtelte Buttons wären ungültiges
+            // HTML und würden den Klick auf die Kachel mitnehmen.
             return (
-              <button
-                key={d}
-                onClick={() => onPick(d)}
-                className={`aspect-square rounded-inner flex flex-col items-center justify-center min-h-11 ${cls}`}
-              >
-                <span className="text-sm font-semibold">{new Date(`${d}T12:00:00`).getDate()}</span>
+              <div key={d} className="relative aspect-square min-h-11">
+                <button
+                  onClick={() => onPick(d)}
+                  className={`w-full h-full rounded-inner flex flex-col items-center justify-center ${cls}`}
+                >
+                  <span className="text-sm font-semibold">{new Date(`${d}T12:00:00`).getDate()}</span>
+                  {kcal > 0 && (
+                    <span className={`text-[9px] ${isToday ? 'text-surface-alt' : 'text-text-muted'}`}>
+                      {Math.round(kcal)}
+                    </span>
+                  )}
+                </button>
+
                 {kcal > 0 && (
-                  <span className={`text-[9px] ${isToday ? 'text-surface-alt' : 'text-text-muted'}`}>
-                    {Math.round(kcal)}
-                  </span>
+                  <>
+                    <button
+                      aria-label={`Aktionen für ${d}`}
+                      aria-expanded={menuFor === d}
+                      onClick={() => setMenuFor(cur => cur === d ? null : d)}
+                      className={`absolute top-0 right-0 w-7 h-7 rounded-inner flex items-center justify-center
+                        text-xs leading-none ${isToday ? 'text-surface-alt' : 'text-text-muted'}`}
+                    >
+                      ⋯
+                    </button>
+
+                    {menuFor === d && (
+                      <div className="absolute top-7 right-0 z-30 min-w-max py-1 bg-surface rounded-inner border border-border shadow-float">
+                        <button
+                          onClick={() => { setMenuFor(null); setDayAction({ type: 'copy', date: d }) }}
+                          className="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface-alt"
+                        >
+                          Tag kopieren
+                        </button>
+                        <button
+                          onClick={() => { setMenuFor(null); setDayAction({ type: 'move', date: d }) }}
+                          className="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface-alt"
+                        >
+                          Tag verschieben
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
-              </button>
+              </div>
             )
           })}
         </div>
       </Card>
+
+      {/* Klick ausserhalb schliesst das Menü. Liegt unter dem Dropdown (z-30),
+          aber über dem Raster — der Kalender selbst bleibt so unverändert. */}
+      {menuFor && <div className="fixed inset-0 z-20" onClick={() => setMenuFor(null)} />}
+
+      {dayAction && (
+        <CopyDayModal
+          date={dayAction.date}
+          mode={dayAction.type}
+          onClose={() => setDayAction(null)}
+          onDone={() => { setDayAction(null); void load() }}
+        />
+      )}
     </>
   )
 }

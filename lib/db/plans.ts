@@ -30,6 +30,65 @@ export async function getPlansInRange(from: string, to: string): Promise<MealPla
   return rows<MealPlan>(res, 'Tagespläne laden')
 }
 
+export async function deletePlan(id: string): Promise<void> {
+  ok(await supabase.from('meal_plans').delete().eq('id', id), 'Tagesplan löschen')
+}
+
+/**
+ * Überträgt die freien Mahlzeiten eines Tages auf ein anderes Datum.
+ *
+ * `copy` lässt den Quelltag stehen, `move` löscht den Quell-Tagesplan danach —
+ * die Kaskade aus 0001 räumt Mahlzeiten und Positionen mit weg. Ein bereits
+ * geplanter Zieltag wird ergänzt, nicht ersetzt: meals hat keine Eindeutigkeit
+ * auf (plan_id, meal_type), zwei Mittagessen sind also erlaubt.
+ *
+ * Summen werden NICHT von Hand gerechnet — die Trigger aus 0004 ziehen sie
+ * beim Insert der Positionen über meals bis in meal_plans nach.
+ *
+ * Vorgekochte Boxen (`batch_portions`) bleiben unberührt. Sie hängen an einem
+ * Topf des Prep-Zyklus und existieren physisch genau einmal; sie liessen sich
+ * weder kopieren noch sinnvoll ohne den Zyklus verschieben.
+ *
+ * Häkchen: beim Kopieren beginnt der Zieltag ungegessen, beim Verschieben
+ * wandert der Stand mit (dieselbe Mahlzeit, nur an einem anderen Tag).
+ *
+ * @returns Anzahl übertragener Mahlzeiten
+ */
+export async function copyDayMeals(
+  fromDate: string,
+  toDate: string,
+  mode: 'copy' | 'move' = 'copy',
+): Promise<number> {
+  if (fromDate === toDate) return 0
+
+  const source = await getPlanByDate(fromDate)
+  if (!source) return 0
+
+  const meals = await getMealsForPlan(source.id)
+  if (meals.length > 0) {
+    const target = await ensurePlan(toDate)
+    for (const m of meals) {
+      const copy = await createMeal(target.id, m.meal_type, m.name)
+      await addMealItems((m.meal_items ?? []).map(i => ({
+        meal_id:   copy.id,
+        food_id:   i.food_id,
+        food_name: i.food_name,
+        amount:    i.amount,
+        unit:      i.unit,
+        kcal:      i.kcal,
+        protein:   i.protein,
+        carbs:     i.carbs,
+        fat:       i.fat,
+        cost:      i.cost,
+        eaten:     mode === 'move' ? i.eaten : false,
+      })))
+    }
+  }
+
+  if (mode === 'move') await deletePlan(source.id)
+  return meals.length
+}
+
 // ── Mahlzeiten (freie Tage, Ad-hoc) ─────────────────────────────────────────
 
 export async function getMealsForPlan(planId: string): Promise<Meal[]> {
