@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   getDayView, getPlansInRange, getMarkersInRange, setDayMarker,
-  ensurePlan, deleteMeal, deleteMealItem, updateMealItemAmount, createMeal, addMealItems,
+  ensurePlan, deleteMeal, deleteMealItem, updateMealItemAmount, createMeal, updateMeal, addMealItems,
   setMealEaten, setMealItemEaten, applyDefaultMeals, type DayView, type PortionWithBatch,
 } from '@/lib/db/plans'
 import { setPortionConsumed, deletePortion, addPortion } from '@/lib/db/cycles'
@@ -243,6 +243,11 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
       const plan = day!.plan ?? await ensurePlan(date)
       let mealId = data.existingMealId
       if (mealId) {
+        // Titel und Slot mitschreiben - sonst bleibt der alte Name stehen
+        await updateMeal(mealId, {
+          name: data.mealName,
+          meal_type: data.mealType as MealTypeKey,
+        })
         await deleteMealItemsFor(mealId)
       } else {
         const meal = await createMeal(plan.id, data.mealType as MealTypeKey, data.mealName)

@@ -183,6 +183,22 @@ export async function deleteMeal(id: string): Promise<void> {
   ok(await supabase.from('meals').delete().eq('id', id), 'Mahlzeit löschen')
 }
 
+/**
+ * Name und/oder Slot einer bestehenden Mahlzeit ändern.
+ *
+ * Ohne diese Funktion blieb der Titel beim Bearbeiten stehen: der Editor
+ * ersetzte nur die Positionen, die Mahlzeit selbst wurde nie angefasst.
+ */
+export async function updateMeal(
+  id: string, patch: { name?: string; meal_type?: MealTypeKey },
+): Promise<void> {
+  const fields: Record<string, string> = {}
+  if (patch.name !== undefined) fields.name = patch.name
+  if (patch.meal_type !== undefined) fields.meal_type = patch.meal_type
+  if (Object.keys(fields).length === 0) return
+  ok(await supabase.from('meals').update(fields).eq('id', id), 'Mahlzeit speichern')
+}
+
 /** Long-press „verschieben nach": anderer Tag oder anderer Slot. */
 export async function moveMeal(id: string, planId: string, mealType: MealTypeKey): Promise<void> {
   ok(await supabase.from('meals').update({ plan_id: planId, meal_type: mealType }).eq('id', id), 'Mahlzeit verschieben')
