@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   getDayView, getPlansInRange, getMarkersInRange, setDayMarker,
   ensurePlan, deleteMeal, deleteMealItem, updateMealItemAmount, createMeal, addMealItems,
-  setMealEaten, setMealItemEaten, applyDefaultMeals, type DayView,
+  setMealEaten, setMealItemEaten, applyDefaultMeals, type DayView, type PortionWithBatch,
 } from '@/lib/db/plans'
-import { setPortionConsumed } from '@/lib/db/cycles'
+import { setPortionConsumed, deletePortion, addPortion } from '@/lib/db/cycles'
 import { dayEaten } from '@/lib/calculations'
 import type { DayMarker, Meal, MealItem, MealPlan } from '@/lib/db/types'
 import { MEAL_TYPE_ORDER, MEAL_TYPE_LABELS, type MealTypeKey } from '@/lib/mealTypes'
@@ -186,6 +186,28 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
     }
   }
 
+  /**
+   * Box aus dem Tag nehmen. Betrifft nur die Tageszuordnung — der Zyklus
+   * behält Topf, Portionenzahl, Einkaufs- und Kochliste.
+   */
+  async function removePortion(p: PortionWithBatch) {
+    const name = p.prep_batches.recipes?.name ?? 'Box'
+    try {
+      await deletePortion(p.id)
+      await load()
+      toastUndo(`„${name}" aus dem Tag entfernt`, async () => {
+        try {
+          await addPortion(p.batch_id, p.date, p.meal_type, p.consumed)
+          await load()
+        } catch (e) {
+          toast(e instanceof Error ? e.message : 'Wiederherstellen fehlgeschlagen', 'error')
+        }
+      })
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Entfernen fehlgeschlagen', 'error')
+    }
+  }
+
   async function togglePortion(portionId: string, next: boolean) {
     setDay(prev => prev
       ? { ...prev, portions: prev.portions.map(p => (p.id === portionId ? { ...p, consumed: next } : p)) }
@@ -344,12 +366,20 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
               {/* Vorgekochte Boxen */}
               {portions.map(p => (
                 <div key={p.id} className="rounded-inner bg-sage-soft p-3 mb-2">
-                  <Checkbox
-                    checked={p.consumed}
-                    onChange={v => { void togglePortion(p.id, v) }}
-                    label={p.prep_batches.recipes?.name ?? 'Box'}
-                    trailing={`${Math.round(p.prep_batches.kcal_per_portion)} kcal`}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={p.consumed}
+                      onChange={v => { void togglePortion(p.id, v) }}
+                      label={p.prep_batches.recipes?.name ?? 'Box'}
+                      trailing={`${Math.round(p.prep_batches.kcal_per_portion)} kcal`}
+                      className="flex-1 min-w-0"
+                    />
+                    <button
+                      onClick={() => { void removePortion(p) }}
+                      aria-label="Box aus dem Tag entfernen"
+                      className="tap-inline text-text-faint hover:text-danger px-1"
+                    >×</button>
+                  </div>
                   <p className="text-[11px] text-text-muted pl-8">
                     Box aus dem Kühlschrank · {Math.round(p.prep_batches.protein_per_portion)} g Protein
                   </p>

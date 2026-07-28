@@ -216,6 +216,29 @@ export async function movePortion(portionId: string, date: string, mealType: Mea
   await ensurePlansForDates([date])
 }
 
+/**
+ * Box aus einem Tag entfernen.
+ *
+ * Nur die Tageszuordnung fällt weg. Der Topf behält seine Portionenzahl,
+ * Einkaufs- und Kochliste des Zyklus bleiben unverändert — die Menge wurde ja
+ * bereits eingekauft und gekocht. Wer wirklich weniger kochen will, ändert die
+ * Portionen des Topfes im Zyklus (`updateBatchPortions`).
+ */
+export async function deletePortion(portionId: string): Promise<void> {
+  ok(await supabase.from('batch_portions').delete().eq('id', portionId), 'Box entfernen')
+}
+
+/** Box wieder einsetzen — Gegenstück zu `deletePortion` für „Rückgängig". */
+export async function addPortion(
+  batchId: string, date: string, mealType: MealTypeKey, consumed = false,
+): Promise<void> {
+  ok(
+    await supabase.from('batch_portions').insert({ batch_id: batchId, date, meal_type: mealType, consumed }),
+    'Box einsetzen'
+  )
+  await ensurePlansForDates([date])
+}
+
 export async function setPortionConsumed(portionId: string, consumed: boolean): Promise<void> {
   ok(await supabase.from('batch_portions').update({ consumed }).eq('id', portionId), 'Box abhaken')
 }
