@@ -45,8 +45,9 @@ export default function KalenderPage() {
   const [goals, setGoals]     = useState<Goals>({ kcal: 2000, protein: 150, kosten: 20 })
   const [popup, setPopup]     = useState<string | null>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
-  const [templateAction, setTemplateAction] = useState<{ type: 'save' | 'load' | 'copy'; dateStr: string } | null>(null)
+  const [templateAction, setTemplateAction] = useState<{ type: 'save' | 'load' | 'copy' | 'move'; dateStr: string } | null>(null)
   const [showDistributeMenu, setShowDistributeMenu] = useState(false)
+  const [dayMenu, setDayMenu] = useState<string | null>(null)
   const exportRef = useRef<HTMLDivElement>(null)
 
   const today = new Date(), todayStr = toDateStr(today)
@@ -61,6 +62,14 @@ export default function KalenderPage() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  // Tages-Menü (⋯) schliesst bei jedem Klick ausserhalb
+  useEffect(() => {
+    if (!dayMenu) return
+    const close = () => setDayMenu(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [dayMenu])
 
   async function loadAll() {
     try {
@@ -170,8 +179,8 @@ export default function KalenderPage() {
         ))}
       </div>
 
-      {/* Calendar card */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
+      {/* Calendar card - overflow sichtbar, damit die ⋯-Menüs der unteren Reihen nicht abgeschnitten werden */}
+      <div className="rounded-2xl" style={{ background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
         {/* Month nav */}
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #f1f5f9' }}>
           <button onClick={() => setAnchor(new Date(year, month - 1, 1))}
@@ -205,31 +214,67 @@ export default function KalenderPage() {
             const isPast  = ds < todayStr
             const isWeek  = thisWeek.some(d => toDateStr(d) === ds)
 
+            const hatMahlzeiten = Boolean(plan?.meals?.length)
+
             return (
-              <button key={i} onClick={() => setPopup(ds)}
-                className="rounded-xl p-2 flex flex-col transition-all active:scale-95"
-                style={{ minHeight: 80, ...tileStyle(plan, goals, isToday, isPast), outline: isWeek && !isToday ? '1px solid #c7d2fe' : 'none', outlineOffset: '-1px' }}>
+              <div key={i} className="relative">
+                <button onClick={() => setPopup(ds)}
+                  className="w-full h-full rounded-xl p-2 flex flex-col transition-all active:scale-95"
+                  style={{ minHeight: 80, ...tileStyle(plan, goals, isToday, isPast), outline: isWeek && !isToday ? '1px solid #c7d2fe' : 'none', outlineOffset: '-1px' }}>
 
-                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold mb-1"
-                  style={isToday ? { background: '#475569', color: 'white' } : isPast && !plan ? { color: '#cbd5e1' } : { color: '#475569' }}>
-                  {day.getDate()}
-                </span>
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold mb-1"
+                    style={isToday ? { background: '#475569', color: 'white' } : isPast && !plan ? { color: '#cbd5e1' } : { color: '#475569' }}>
+                    {day.getDate()}
+                  </span>
 
-                <div className="flex gap-1 mb-1 items-center">
-                  {marker?.training   && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#2563eb' }} />}
-                  {marker?.eingeladen && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#7c3aed' }} />}
-                  {isDayComplete(plan) && <span className="text-[10px] font-bold" style={{ color: '#16a34a' }}>✓</span>}
-                </div>
+                  <div className="flex gap-1 mb-1 items-center">
+                    {marker?.training   && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#2563eb' }} />}
+                    {marker?.eingeladen && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#7c3aed' }} />}
+                    {isDayComplete(plan) && <span className="text-[10px] font-bold" style={{ color: '#16a34a' }}>✓</span>}
+                  </div>
 
-                {plan && plan.kcal_total > 0 && (
-                  <div>
-                    <div className="text-[10px] font-bold leading-tight" style={{ color: limitColor(plan.kcal_total, goals.kcal) }}>
-                      {Math.round(plan.kcal_total)}
+                  {plan && plan.kcal_total > 0 && (
+                    <div>
+                      <div className="text-[10px] font-bold leading-tight" style={{ color: limitColor(plan.kcal_total, goals.kcal) }}>
+                        {Math.round(plan.kcal_total)}
+                      </div>
+                      <div className="text-[9px] leading-tight" style={{ color: '#94a3b8' }}>kcal</div>
                     </div>
-                    <div className="text-[9px] leading-tight" style={{ color: '#94a3b8' }}>kcal</div>
+                  )}
+                </button>
+
+                {/* ⋯-Menü: nur bei Tagen mit Mahlzeiten - kopieren, verschieben, Vorlage */}
+                {hatMahlzeiten && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setDayMenu(dayMenu === ds ? null : ds) }}
+                    aria-label="Tag-Aktionen"
+                    className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-md text-xs leading-none transition-all"
+                    style={{ color: '#94a3b8', background: dayMenu === ds ? '#e2e8f0' : 'transparent' }}>
+                    ⋯
+                  </button>
+                )}
+
+                {dayMenu === ds && (
+                  <div onClick={e => e.stopPropagation()}
+                    className="absolute right-0 top-7 w-44 rounded-xl shadow-xl z-50 overflow-hidden"
+                    style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                    {([
+                      ['copy', 'Tag kopieren'],
+                      ['move', 'Tag verschieben'],
+                      ['save', 'Als Tagesvorlage speichern'],
+                    ] as const).map(([type, label], j) => (
+                      <button key={type}
+                        onClick={() => { setDayMenu(null); setTemplateAction({ type, dateStr: ds }) }}
+                        className="w-full text-left px-3.5 py-2.5 text-xs font-medium transition-colors"
+                        style={{ color: '#1e293b', borderTop: j > 0 ? '1px solid #f1f5f9' : 'none' }}
+                        onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#f8fafc')}
+                        onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}>
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 )}
-              </button>
+              </div>
             )
           })}
         </div>
@@ -264,9 +309,10 @@ export default function KalenderPage() {
         />
       )}
 
-      {templateAction?.type === 'copy' && (
+      {(templateAction?.type === 'copy' || templateAction?.type === 'move') && (
         <CopyDayModal
           sourceDate={templateAction.dateStr}
+          mode={templateAction.type}
           onClose={() => setTemplateAction(null)}
           onCopied={() => { setTemplateAction(null); loadAll() }}
         />

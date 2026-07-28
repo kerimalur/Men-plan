@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
-export default function CopyDayModal({ sourceDate, onClose, onCopied }: {
-  sourceDate: string; onClose: () => void; onCopied: () => void
+export default function CopyDayModal({ sourceDate, mode = 'copy', onClose, onCopied }: {
+  sourceDate: string; mode?: 'copy' | 'move'; onClose: () => void; onCopied: () => void
 }) {
   const [targetDate, setTargetDate] = useState('')
   const [copying, setCopying] = useState(false)
+  const verschieben = mode === 'move'
 
   async function copy() {
     if (!targetDate || targetDate === sourceDate) return
@@ -48,6 +49,11 @@ export default function CopyDayModal({ sourceDate, onClose, onCopied }: {
     }), { kcal: 0, protein: 0, cost: 0 })
     await supabase.from('meal_plans').update({ kcal_total: t.kcal, protein_total: t.protein, cost_total: t.cost }).eq('id', targetPlanId)
 
+    // Verschieben = Kopieren + Quelle leeren (Cascade räumt Mahlzeiten und Zutaten mit ab)
+    if (verschieben) {
+      await supabase.from('meal_plans').delete().eq('id', sourcePlan.id)
+    }
+
     setCopying(false); onCopied()
   }
 
@@ -58,13 +64,21 @@ export default function CopyDayModal({ sourceDate, onClose, onCopied }: {
       style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}>
       <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-xl" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-          <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>Tag kopieren</h3>
+          <h3 className="text-sm font-bold" style={{ color: '#1e293b' }}>
+            {verschieben ? 'Tag verschieben' : 'Tag kopieren'}
+          </h3>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg" style={{ color: '#94a3b8', background: '#f1f5f9' }}>×</button>
         </div>
         <div className="p-5 space-y-4">
           <p className="text-xs" style={{ color: '#64748b' }}>
-            Alle Mahlzeiten vom <span className="font-semibold">{sourceLabel}</span> werden kopiert nach:
+            Alle Mahlzeiten vom <span className="font-semibold">{sourceLabel}</span> werden{' '}
+            {verschieben ? 'verschoben' : 'kopiert'} nach:
           </p>
+          {verschieben && (
+            <p className="text-xs" style={{ color: '#b45309' }}>
+              Der Quelltag ist danach leer. Ein bereits geplanter Zieltag wird ergänzt, nicht ersetzt.
+            </p>
+          )}
           <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)}
             className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
             style={{ border: '1px solid #e2e8f0', color: '#1e293b' }} />
@@ -73,7 +87,11 @@ export default function CopyDayModal({ sourceDate, onClose, onCopied }: {
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ background: '#f1f5f9', color: '#64748b' }}>Abbrechen</button>
           <button onClick={copy} disabled={!targetDate || targetDate === sourceDate || copying}
             className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
-            style={{ background: '#d97706' }}>{copying ? 'Kopieren…' : 'Kopieren'}</button>
+            style={{ background: '#d97706' }}>
+            {copying
+              ? (verschieben ? 'Verschieben…' : 'Kopieren…')
+              : (verschieben ? 'Verschieben' : 'Kopieren')}
+          </button>
         </div>
       </div>
     </div>
