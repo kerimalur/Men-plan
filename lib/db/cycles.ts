@@ -239,6 +239,66 @@ export async function addPortion(
   await ensurePlansForDates([date])
 }
 
+/**
+ * Was steht im Kühlschrank?
+ *
+ * Ein Topf hat `portions` Boxen. Wie viele davon einem Tag zugeordnet sind,
+ * steht in `batch_portions` — die Differenz liegt ungeplant im Kühlschrank und
+ * lässt sich jedem beliebigen Tag zuweisen. Zyklen, deren letzter Tag mehr als
+ * eine Woche zurückliegt, bleiben aussen vor: was so alt ist, ist gegessen.
+ */
+export interface FridgeBatch {
+  batchId: string
+  recipeName: string
+  mealType: MealTypeKey
+  cycleName: string
+  portions: number
+  /** Bereits einem Tag zugewiesen. */
+  assigned: number
+  /** Noch frei verfügbar (kann 0 sein — dann nur verschiebbar). */
+  free: number
+  kcalPerPortion: number
+  proteinPerPortion: number
+}
+
+export async function listFridgeBatches(): Promise<FridgeBatch[]> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 7)
+
+  const cycles = rows<PrepCycle & { prep_batches?: (PrepBatch & {
+    recipes?: Pick<Recipe, 'id' | 'name'>
+    batch_portions?: BatchPortion[]
+  })[] }>(
+    await supabase.from('prep_cycles')
+      .select(
+        `${CYCLE_COLUMNS}, prep_batches(${BATCH_COLUMNS}, recipes(id, name), ` +
+        `batch_portions(id, batch_id, date, meal_type, consumed))`
+      )
+      .gte('end_date', toDateStr(cutoff))
+      .order('cook_date', { ascending: false }),
+    'Kühlschrank laden'
+  )
+
+  const out: FridgeBatch[] = []
+  for (const c of cycles) {
+    for (const b of c.prep_batches ?? []) {
+      const assigned = (b.batch_portions ?? []).length
+      out.push({
+        batchId: b.id,
+        recipeName: b.recipes?.name ?? 'Unbekanntes Rezept',
+        mealType: b.meal_type,
+        cycleName: c.name || new Date(`${c.cook_date}T12:00:00`).toLocaleDateString('de-CH'),
+        portions: b.portions,
+        assigned,
+        free: Math.max(0, b.portions - assigned),
+        kcalPerPortion: b.kcal_per_portion,
+        proteinPerPortion: b.protein_per_portion,
+      })
+    }
+  }
+  return out
+}
+
 export async function setPortionConsumed(portionId: string, consumed: boolean): Promise<void> {
   ok(await supabase.from('batch_portions').update({ consumed }).eq('id', portionId), 'Box abhaken')
 }

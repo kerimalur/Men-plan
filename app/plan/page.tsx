@@ -17,6 +17,7 @@ import { useSwipe } from '@/lib/useSwipe'
 import { useToast } from '@/components/Toast'
 import MealModal, { type ExistingMeal } from '@/components/MealModal'
 import CopyDayModal, { type CopyDayMode } from '@/components/CopyDayModal'
+import PortionModal, { type PortionModalMode } from '@/components/PortionModal'
 import QuickAddItem, { type QuickItem } from '@/components/QuickAddItem'
 import Card, { CardLabel } from '@/components/ui/Card'
 import Pill, { MealTypePill } from '@/components/ui/Pill'
@@ -96,6 +97,12 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
   const [addingFor, setAddingFor] = useState<MealTypeKey | null>(null)
   const [editingMeal, setEditingMeal] = useState<ExistingMeal | undefined>(undefined)
   const [editingItem, setEditingItem] = useState<string | null>(null)
+  // Box verschieben oder eine neue aus dem Kühlschrank holen
+  const [portionAction, setPortionAction] = useState<{
+    mode: PortionModalMode
+    portion?: { id: string; name: string; meal_type: MealTypeKey }
+    slot?: MealTypeKey
+  } | null>(null)
 
   const load = useCallback(async () => {
     setError(null)
@@ -351,14 +358,22 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
 
           return (
             <Card key={slot}>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between gap-2 mb-3">
                 <MealTypePill mealType={slot} label={MEAL_TYPE_LABELS[slot]} />
-                <button
-                  onClick={() => { setEditingMeal(undefined); setAddingFor(slot) }}
-                  className="tap-inline text-sm font-semibold text-accent"
-                >
-                  + Hinzufügen
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setPortionAction({ mode: 'add', slot })}
+                    className="tap-inline text-sm font-semibold text-text-muted"
+                  >
+                    + Box
+                  </button>
+                  <button
+                    onClick={() => { setEditingMeal(undefined); setAddingFor(slot) }}
+                    className="tap-inline text-sm font-semibold text-accent"
+                  >
+                    + Hinzufügen
+                  </button>
+                </div>
               </div>
 
               {empty && <p className="text-sm text-text-faint">—</p>}
@@ -374,6 +389,18 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
                       trailing={`${Math.round(p.prep_batches.kcal_per_portion)} kcal`}
                       className="flex-1 min-w-0"
                     />
+                    <button
+                      onClick={() => setPortionAction({
+                        mode: 'move',
+                        portion: {
+                          id: p.id,
+                          name: p.prep_batches.recipes?.name ?? 'Box',
+                          meal_type: p.meal_type,
+                        },
+                      })}
+                      aria-label="Box verschieben oder entfernen"
+                      className="tap-inline text-text-muted hover:text-accent px-1 text-sm"
+                    >⋯</button>
                     <button
                       onClick={() => { void removePortion(p) }}
                       aria-label="Box aus dem Tag entfernen"
@@ -440,6 +467,17 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
           existingMeal={editingMeal}
           onClose={() => { setAddingFor(null); setEditingMeal(undefined) }}
           onSave={handleSaveMeal}
+        />
+      )}
+
+      {portionAction && (
+        <PortionModal
+          mode={portionAction.mode}
+          date={date}
+          portion={portionAction.portion}
+          slot={portionAction.slot}
+          onClose={() => setPortionAction(null)}
+          onDone={() => { setPortionAction(null); void load() }}
         />
       )}
     </>
