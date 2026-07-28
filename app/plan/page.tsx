@@ -100,7 +100,7 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
   // Box verschieben oder eine neue aus dem Kühlschrank holen
   const [portionAction, setPortionAction] = useState<{
     mode: PortionModalMode
-    portion?: { id: string; name: string; meal_type: MealTypeKey }
+    portion?: { id: string; name: string; meal_type: MealTypeKey; recipe_id?: string }
     slot?: MealTypeKey
   } | null>(null)
 
@@ -396,6 +396,7 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
                           id: p.id,
                           name: p.prep_batches.recipes?.name ?? 'Box',
                           meal_type: p.meal_type,
+                          recipe_id: p.prep_batches.recipe_id,
                         },
                       })}
                       aria-label="Box verschieben oder entfernen"
@@ -478,6 +479,18 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
           slot={portionAction.slot}
           onClose={() => setPortionAction(null)}
           onDone={() => { setPortionAction(null); void load() }}
+          onConverted={async converted => {
+            setPortionAction(null)
+            await load()
+            // Direkt in den Editor: das ist der Grund, warum umgewandelt wurde
+            setEditingMeal({
+              id: converted.mealId,
+              name: converted.name,
+              meal_type: converted.mealType,
+              items: converted.items,
+            })
+            setAddingFor(converted.mealType)
+          }}
         />
       )}
     </>

@@ -64,6 +64,12 @@ export default function RezeptePage() {
 
   useEffect(() => { void Promise.resolve().then(load) }, [load])
 
+  // Direktlink aus der Tagesansicht: /rezepte?rezept=<id> öffnet das Rezept.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('rezept')
+    if (id) setOpenId(id)
+  }, [])
+
   const visible = useMemo(() => recipes.filter(r => {
     if (mealType && r.meal_type !== mealType) return false
     if (categoryId && r.category_id !== categoryId) return false

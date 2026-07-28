@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { movePortion, addPortion, deletePortion, listFridgeBatches, type FridgeBatch } from '@/lib/db/cycles'
+import {
+  movePortion, addPortion, deletePortion, listFridgeBatches, convertPortionToMeal,
+  type FridgeBatch, type ConvertedPortion,
+} from '@/lib/db/cycles'
 import { MEAL_TYPE_ORDER, MEAL_TYPE_LABELS, type MealTypeKey } from '@/lib/mealTypes'
 import { toDateStr, DAY_LONG } from '@/lib/dates'
 import { useToast } from '@/components/Toast'
@@ -26,11 +29,13 @@ interface Props {
   /** Tag, um den es geht. */
   date: string
   /** Nur bei 'move': die Box, die bearbeitet wird. */
-  portion?: { id: string; name: string; meal_type: MealTypeKey }
+  portion?: { id: string; name: string; meal_type: MealTypeKey; recipe_id?: string }
   /** Nur bei 'add': in welchen Slot die Box zuerst gelegt werden soll. */
   slot?: MealTypeKey
   onClose: () => void
   onDone: () => void
+  /** Box wurde in eine freie Mahlzeit gelöst — der Aufrufer öffnet den Editor. */
+  onConverted?: (converted: ConvertedPortion) => void
 }
 
 function longDate(d: string): string {
@@ -38,7 +43,7 @@ function longDate(d: string): string {
   return `${DAY_LONG[(date.getDay() + 6) % 7]}, ${date.getDate()}. ${date.getMonth() + 1}.`
 }
 
-export default function PortionModal({ mode, date, portion, slot, onClose, onDone }: Props) {
+export default function PortionModal({ mode, date, portion, slot, onClose, onDone, onConverted }: Props) {
   const { toast } = useToast()
 
   const [target, setTarget] = useState(date)
@@ -81,6 +86,19 @@ export default function PortionModal({ mode, date, portion, slot, onClose, onDon
     }
   }
 
+  /** Box herauslösen: wird zur freien Mahlzeit dieses Tages und dann editierbar. */
+  async function convert() {
+    if (!portion || busy) return
+    setBusy(true)
+    try {
+      const converted = await convertPortionToMeal(portion.id)
+      onConverted?.(converted)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Umwandeln fehlgeschlagen', 'error')
+      setBusy(false)
+    }
+  }
+
   async function remove() {
     if (!portion || busy) return
     setBusy(true)
@@ -108,9 +126,40 @@ export default function PortionModal({ mode, date, portion, slot, onClose, onDon
 
         <div className="px-5 py-4 space-y-4 overflow-y-auto">
           {mode === 'move' && portion && (
-            <p className="text-sm text-text-secondary">
-              <span className="font-semibold text-text">{portion.name}</span> vom {longDate(date)}
-            </p>
+            <>
+              <p className="text-sm text-text-secondary">
+                <span className="font-semibold text-text">{portion.name}</span> vom {longDate(date)}
+              </p>
+
+              {/* Name und Zutaten ändern - zwei Wege, je nach Reichweite */}
+              <div className="rounded-inner bg-surface-alt p-3">
+                <span className="block text-[11px] uppercase tracking-[0.08em] font-semibold text-text-muted mb-2">
+                  Name &amp; Zutaten ändern
+                </span>
+                <button
+                  onClick={() => { void convert() }}
+                  disabled={busy}
+                  className="block w-full text-left px-3 py-2 rounded-button bg-surface border border-border disabled:opacity-40"
+                >
+                  <span className="block text-sm font-semibold text-text">Nur an diesem Tag</span>
+                  <span className="block text-[11px] text-text-muted mt-0.5">
+                    Box wird zur freien Mahlzeit — Name, Zutaten und Mengen frei bearbeitbar.
+                    Der Zyklus bleibt unverändert.
+                  </span>
+                </button>
+                {portion.recipe_id && (
+                  <a
+                    href={`/rezepte?rezept=${portion.recipe_id}`}
+                    className="block mt-2 px-3 py-2 rounded-button bg-surface border border-border"
+                  >
+                    <span className="block text-sm font-semibold text-text">Im Rezept ändern</span>
+                    <span className="block text-[11px] text-text-muted mt-0.5">
+                      Gilt für alle Boxen aus diesem Topf und künftige Zyklen.
+                    </span>
+                  </a>
+                )}
+              </div>
+            </>
           )}
 
           {/* Kühlschrank-Auswahl */}

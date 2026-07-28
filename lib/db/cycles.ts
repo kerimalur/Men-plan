@@ -1,6 +1,7 @@
 import { supabase, rows, row, maybeRow, ok } from './client'
 import { getFoodsByIds } from './foods'
 import { getRecipe, nutritionPerPortion } from './recipes'
+import { calcNutrition } from '@/lib/calculations'
 import { toDateStr } from '@/lib/dates'
 import { toBaseUnit } from '@/lib/units'
 import type { MealTypeKey } from '@/lib/mealTypes'
@@ -297,6 +298,83 @@ export async function listFridgeBatches(): Promise<FridgeBatch[]> {
     }
   }
   return out
+}
+
+/**
+ * Box in eine freie Mahlzeit dieses Tages umwandeln.
+ *
+ * Warum nicht die Box selbst bearbeitbar machen: eine Box ist eine Portion aus
+ * einem gekochten Topf — Name und Zutaten gehören dem Rezept und gelten für
+ * alle Boxen desselben Topfes. Wer nur DIESEN einen Tag anpassen will, löst die
+ * Box heraus: die Zutaten wandern mit ihren Mengen pro Portion in eine normale
+ * Mahlzeit, die sich frei umbenennen, ergänzen und kürzen lässt.
+ *
+ * Der Zyklus bleibt unangetastet (gekocht ist gekocht); nur die Tageszuordnung
+ * dieser einen Portion verschwindet. Die Tagessummen bleiben gleich, weil die
+ * Mahlzeit dieselben Werte trägt.
+ */
+export interface ConvertedPortion {
+  mealId: string
+  name: string
+  mealType: MealTypeKey
+  date: string
+  items: {
+    food_id: string | null
+    food_name: string
+    amount: number
+    unit: string
+    kcal: number
+    protein: number
+    carbs: number
+    fat: number
+    cost: number
+    eaten: boolean
+  }[]
+}
+
+export async function convertPortionToMeal(portionId: string): Promise<ConvertedPortion> {
+  const portion = row<BatchPortion & {
+    prep_batches: PrepBatch & { recipes?: Pick<Recipe, 'id' | 'name'> }
+  }>(
+    await supabase.from('batch_portions')
+      .select(`id, batch_id, date, meal_type, consumed, prep_batches(${BATCH_COLUMNS}, recipes(id, name))`)
+      .eq('id', portionId).single(),
+    'Box laden'
+  )
+
+  const recipe = await getRecipe(portion.prep_batches.recipe_id)
+  const recipeItems = recipe?.recipe_items ?? []
+  const foods = await getFoodsByIds(recipeItems.map(i => i.food_id).filter(Boolean) as string[])
+  const foodsById = new Map(foods.map(f => [f.id, f]))
+
+  const items = recipeItems.map(i => {
+    const food = i.food_id ? foodsById.get(i.food_id) : undefined
+    const n = food
+      ? calcNutrition(food, i.amount_per_portion, i.unit)
+      : { kcal: 0, protein: 0, carbs: 0, fat: 0, cost: 0 }
+    return {
+      food_id: i.food_id,
+      food_name: i.food_name,
+      amount: i.amount_per_portion,
+      unit: i.unit as string,
+      kcal: n.kcal, protein: n.protein, carbs: n.carbs ?? 0, fat: n.fat ?? 0, cost: n.cost,
+      eaten: portion.consumed,
+    }
+  })
+
+  const { ensurePlan, createMeal, addMealItems, setMealEaten } = await import('./plans')
+  const plan = await ensurePlan(portion.date)
+  const name = portion.prep_batches.recipes?.name ?? 'Box'
+  const mealType = portion.meal_type as MealTypeKey
+  const meal = await createMeal(plan.id, mealType, name)
+
+  await addMealItems(items.map(i => ({ ...i, meal_id: meal.id })))
+  // Ohne Zutaten greift der Häkchen-Trigger nicht — dann direkt setzen.
+  if (portion.consumed && items.length === 0) await setMealEaten(meal.id, true)
+
+  await deletePortion(portionId)
+
+  return { mealId: meal.id, name, mealType, date: portion.date, items }
 }
 
 export async function setPortionConsumed(portionId: string, consumed: boolean): Promise<void> {
