@@ -84,6 +84,12 @@ export interface MealItem {
   carbs: number
   fat: number
   cost: number
+  /**
+   * Einzeln abgehakt. Gekoppelt an Meal.eaten (Migration 0011):
+   * alle Positionen abgehakt → Mahlzeit gegessen, Mahlzeit abgehakt →
+   * alle Positionen gegessen. Die Kopplung läuft in der Datenbank.
+   */
+  eaten: boolean
   created_at: string | null
 }
 
@@ -97,6 +103,7 @@ export interface Meal {
   carbs_total: number
   fat_total: number
   cost_total: number
+  /** Abgeleitet, sobald die Mahlzeit Positionen hat — siehe MealItem.eaten. */
   eaten: boolean
   created_at: string | null
   meal_items?: MealItem[]

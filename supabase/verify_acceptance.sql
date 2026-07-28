@@ -231,3 +231,103 @@ JOIN meal_plans p ON p.id = s.id
 WHERE abs(p.kcal_total    - s.kcal_total)    > 0.5
    OR abs(p.protein_total - s.protein_total) > 0.5
    OR abs(p.cost_total    - s.cost_total)    > 0.01;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- E. Einzeln abhakbare Positionen (Migration 0011)
+--
+-- Bildet den Fall "freier Tag" nach: EINE Mahlzeit mit acht Positionen,
+-- davon drei gegessen. Prueft beide Richtungen der Kopplung und dass das
+-- Abwaehlen einer Position die uebrigen Haekchen stehen laesst.
+-- ────────────────────────────────────────────────────────────────────────────
+
+DO $$
+DECLARE
+  v_date DATE := DATE '2099-12-31';
+  v_plan UUID;
+  v_meal UUID;
+  v_item UUID;
+  v_eaten BOOLEAN;
+  v_count INT;
+  v_kcal NUMERIC;
+BEGIN
+  DELETE FROM meal_plans WHERE date = v_date;
+
+  INSERT INTO meal_plans (date) VALUES (v_date) RETURNING id INTO v_plan;
+  INSERT INTO meals (plan_id, meal_type, name)
+  VALUES (v_plan, 'mittagessen', 'ZZ_TEST Tagesaussicht') RETURNING id INTO v_meal;
+
+  INSERT INTO meal_items (meal_id, food_id, food_name, amount, unit, kcal, protein, carbs, fat, cost)
+  VALUES
+    (v_meal, NULL, 'ZZ_TEST Suesskartoffel', 300, 'g', 300, 5,  70, 0.5, 1.20),
+    (v_meal, NULL, 'ZZ_TEST Oktopus',        150, 'g', 180, 35, 2,  3,   4.50),
+    (v_meal, NULL, 'ZZ_TEST Hackfleisch',    150, 'g', 250, 24, 0,  17,  2.80),
+    (v_meal, NULL, 'ZZ_TEST Kartoffel',      200, 'g', 160, 4,  35, 0.2, 0.40),
+    (v_meal, NULL, 'ZZ_TEST Magerquark',     200, 'g', 120, 22, 5,  0.3, 1.10),
+    (v_meal, NULL, 'ZZ_TEST Blaubeeren',     100, 'g',  60, 1,  12, 0.4, 2.20),
+    (v_meal, NULL, 'ZZ_TEST Thunfisch',      100, 'g', 130, 28, 0,  1,   2.60),
+    (v_meal, NULL, 'ZZ_TEST Beilage',        150, 'g', 200, 10, 30, 5,   0.90);
+
+  -- Neue Positionen stehen auf FALSE, die Mahlzeit damit ebenfalls.
+  SELECT count(*) FILTER (WHERE eaten) INTO v_count FROM meal_items WHERE meal_id = v_meal;
+  ASSERT v_count = 0, 'E1 fehlgeschlagen: neue Positionen sind nicht ungegessen';
+  SELECT COALESCE(eaten, FALSE) INTO v_eaten FROM meals WHERE id = v_meal;
+  ASSERT v_eaten = FALSE, 'E1 fehlgeschlagen: Mahlzeit gilt faelschlich als gegessen';
+
+  -- Geplante Tagessumme steht, unabhaengig vom Abhaken.
+  SELECT kcal_total INTO v_kcal FROM meal_plans WHERE id = v_plan;
+  ASSERT v_kcal = 1400, format('E2 fehlgeschlagen: Tagessumme %s statt 1400', v_kcal);
+
+  -- Drei von acht abhaken.
+  UPDATE meal_items SET eaten = TRUE
+  WHERE meal_id = v_meal
+    AND food_name IN ('ZZ_TEST Suesskartoffel', 'ZZ_TEST Oktopus', 'ZZ_TEST Hackfleisch');
+
+  SELECT count(*) FILTER (WHERE eaten) INTO v_count FROM meal_items WHERE meal_id = v_meal;
+  ASSERT v_count = 3, format('E3 fehlgeschlagen: %s statt 3 abgehakt', v_count);
+
+  SELECT SUM(kcal) INTO v_kcal FROM meal_items WHERE meal_id = v_meal AND eaten;
+  ASSERT v_kcal = 730, format('E3 fehlgeschlagen: %s statt 730 kcal gegessen', v_kcal);
+
+  SELECT COALESCE(eaten, FALSE) INTO v_eaten FROM meals WHERE id = v_meal;
+  ASSERT v_eaten = FALSE, 'E3 fehlgeschlagen: Mahlzeit gilt bei 3/8 schon als gegessen';
+
+  SELECT kcal_total INTO v_kcal FROM meal_plans WHERE id = v_plan;
+  ASSERT v_kcal = 1400, format('E3 fehlgeschlagen: Abhaken veraenderte die Planung (%s)', v_kcal);
+
+  RAISE NOTICE 'E3 3 von 8 Positionen: 730 von 1400 kcal gegessen';
+
+  -- Nach oben: alle abhaken -> Mahlzeit gegessen.
+  UPDATE meal_items SET eaten = TRUE WHERE meal_id = v_meal;
+  SELECT COALESCE(eaten, FALSE) INTO v_eaten FROM meals WHERE id = v_meal;
+  ASSERT v_eaten = TRUE, 'E4 fehlgeschlagen: alle Positionen abgehakt, Mahlzeit nicht';
+
+  -- Eine abwaehlen -> Mahlzeit offen, REST BLEIBT abgehakt.
+  SELECT id INTO v_item FROM meal_items WHERE meal_id = v_meal ORDER BY food_name LIMIT 1;
+  UPDATE meal_items SET eaten = FALSE WHERE id = v_item;
+
+  SELECT COALESCE(eaten, FALSE) INTO v_eaten FROM meals WHERE id = v_meal;
+  ASSERT v_eaten = FALSE, 'E5 fehlgeschlagen: Mahlzeit gilt trotz offener Position als gegessen';
+
+  SELECT count(*) FILTER (WHERE eaten) INTO v_count FROM meal_items WHERE meal_id = v_meal;
+  ASSERT v_count = 7, format('E5 fehlgeschlagen: %s statt 7 Haekchen uebrig -- Rueckkopplung loescht mit', v_count);
+
+  RAISE NOTICE 'E5 Abwaehlen einer Position laesst die uebrigen 7 stehen';
+
+  -- Nach unten: Mahlzeit abhaken -> alle Positionen abgehakt.
+  UPDATE meals SET eaten = TRUE WHERE id = v_meal;
+  SELECT count(*) FILTER (WHERE NOT eaten) INTO v_count FROM meal_items WHERE meal_id = v_meal;
+  ASSERT v_count = 0, format('E6 fehlgeschlagen: %s Positionen blieben offen', v_count);
+
+  -- Und zurueck.
+  UPDATE meals SET eaten = FALSE WHERE id = v_meal;
+  SELECT count(*) FILTER (WHERE eaten) INTO v_count FROM meal_items WHERE meal_id = v_meal;
+  ASSERT v_count = 0, format('E6 fehlgeschlagen: %s Positionen blieben abgehakt', v_count);
+
+  RAISE NOTICE '── ALLE KRITERIEN ZU EINZELN ABHAKBAREN POSITIONEN BESTANDEN ──';
+
+  DELETE FROM meal_plans WHERE date = v_date;   -- kaskadiert auf meals/meal_items
+  RAISE NOTICE 'Testdaten entfernt.';
+END $$;
+
+SELECT count(*) AS zz_test_positionen_erwartet_0
+FROM meal_items WHERE food_name LIKE 'ZZ_TEST%';

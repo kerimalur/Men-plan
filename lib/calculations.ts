@@ -71,3 +71,101 @@ export function sumItems(items: Summable[]): Nutrition {
     { kcal: 0, protein: 0, carbs: 0, fat: 0, cost: 0 }
   )
 }
+
+// ── Bereits gegessen ────────────────────────────────────────────────────────
+
+/**
+ * Nur die Felder, die für die Gegessen-Summe gebraucht werden.
+ *
+ * Bewusst strukturell statt per Import aus lib/db/types: dieses Modul bleibt
+ * damit frei von Datenbank-Abhängigkeiten und direkt unter node --test
+ * ausführbar. MealItem, Meal und PortionWithBatch passen darauf.
+ */
+export interface EatenItemLike {
+  eaten: boolean
+  kcal: number
+  protein: number
+  carbs?: number | null
+  fat?: number | null
+  cost: number
+}
+
+export interface EatenMealLike {
+  eaten: boolean
+  kcal_total: number
+  protein_total: number
+  carbs_total: number
+  fat_total: number
+  cost_total: number
+  meal_items?: EatenItemLike[]
+}
+
+export interface EatenPortionLike {
+  consumed: boolean
+  prep_batches: {
+    kcal_per_portion: number
+    protein_per_portion: number
+    carbs_per_portion: number
+    fat_per_portion: number
+    cost_per_portion: number
+  }
+}
+
+/**
+ * Was an einem Tag tatsächlich schon gegessen ist.
+ *
+ * Zwei Quellen, dieselben wie bei der geplanten Tagessumme:
+ *   Positionen freier Mahlzeiten mit eaten = true
+ *   Boxen aus dem Prep-Zyklus mit consumed = true
+ *
+ * Mahlzeiten ohne Positionen zählen über ihr eigenes Häkchen — sonst fielen
+ * Alt-Einträge, deren Positionen gelöscht wurden, stillschweigend heraus.
+ * Mahlzeiten MIT Positionen zählen ausschliesslich über diese; das Häkchen der
+ * Mahlzeit ist dort nur die Ableitung und würde sonst doppelt zählen.
+ *
+ * Gerundet wird einmal am Schluss, wie in den Triggern — nicht nach jeder
+ * Addition wie in sumItems().
+ */
+export function dayEaten(meals: EatenMealLike[], portions: EatenPortionLike[]): Nutrition {
+  let kcal = 0, protein = 0, carbs = 0, fat = 0, cost = 0
+
+  for (const meal of meals) {
+    const items = meal.meal_items ?? []
+
+    if (items.length === 0) {
+      if (!meal.eaten) continue
+      kcal    += Number(meal.kcal_total)    || 0
+      protein += Number(meal.protein_total) || 0
+      carbs   += Number(meal.carbs_total)   || 0
+      fat     += Number(meal.fat_total)     || 0
+      cost    += Number(meal.cost_total)    || 0
+      continue
+    }
+
+    for (const item of items) {
+      if (!item.eaten) continue
+      kcal    += Number(item.kcal)    || 0
+      protein += Number(item.protein) || 0
+      carbs   += Number(item.carbs)   || 0
+      fat     += Number(item.fat)     || 0
+      cost    += Number(item.cost)    || 0
+    }
+  }
+
+  for (const p of portions) {
+    if (!p.consumed) continue
+    kcal    += Number(p.prep_batches.kcal_per_portion)    || 0
+    protein += Number(p.prep_batches.protein_per_portion) || 0
+    carbs   += Number(p.prep_batches.carbs_per_portion)   || 0
+    fat     += Number(p.prep_batches.fat_per_portion)     || 0
+    cost    += Number(p.prep_batches.cost_per_portion)    || 0
+  }
+
+  return {
+    kcal:    Math.round(kcal    * 10)   / 10,
+    protein: Math.round(protein * 10)   / 10,
+    carbs:   Math.round(carbs   * 10)   / 10,
+    fat:     Math.round(fat     * 10)   / 10,
+    cost:    Math.round(cost    * 1000) / 1000,
+  }
+}

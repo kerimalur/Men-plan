@@ -63,6 +63,25 @@ und `prep_batches` halten die Summen aktuell. Die App schreibt nur Positionen.
 Weitere Tabellen: `foods`, `food_categories`, `template_categories`,
 `shopping_list`, `settings`, `day_markers`, `event_meal_rules`.
 
+### Gegessen gegenüber geplant
+
+Abgehakt wird auf drei Ebenen: `batch_portions.consumed` für eine Box,
+`meal_items.eaten` für eine Position, `meals.eaten` für die ganze Mahlzeit.
+
+Die beiden letzten sind gekoppelt, und zwar in der Datenbank (Migration
+`0011`): sind alle Positionen abgehakt, gilt die Mahlzeit als gegessen; wird
+die Mahlzeit abgehakt, gelten alle Positionen als gegessen. Eine einzelne
+Position wieder abzuwählen nimmt nur der Mahlzeit das Häkchen — die übrigen
+Positionen bleiben stehen.
+
+Das ist der Fall „freier Tag": eine Mahlzeit namens *Tagesaussicht* mit acht
+Positionen, von denen über den Tag verteilt einzelne abgehakt werden.
+
+Die Nährwerte bleiben davon unberührt. `meal_plans.kcal_total` und Geschwister
+sind weiterhin die **geplante** Summe. Was davon schon gegessen ist, rechnet
+`dayEaten()` in `lib/calculations.ts` aus den geladenen Positionen und Boxen —
+im Frontend, damit die Anzeige beim Antippen sofort nachzieht.
+
 ### Einheiten
 
 `foods.unit` ist `g`, `ml` oder `stk`. Eingetragen werden darf zusätzlich `dl`
@@ -98,7 +117,7 @@ app/
 components/
   ui/                         Card · Pill · Button · StatCard · SegmentedControl
                               · Checkbox · AmountInput
-  MealModal · RecipePicker · Navigation · Toast
+  MealModal · QuickAddItem · RecipePicker · Navigation · Toast
 lib/
   db/                         die einzige Stelle mit Supabase-Zugriffen
   calculations.ts             Nährwerte, Summen
@@ -155,6 +174,7 @@ steht jeweils ein Verifikationsblock zum Nachprüfen.
 | `0008_shopping_aggregate` | RPC `cycle_shopping_items()` |
 | `0009_fix_planned_batch_recalc` | Korrektur an `0007`: unerlaubtes LATERAL auf die UPDATE-Zieltabelle |
 | `0010_drop_legacy_tables` | abgelöste Tabellen entfernen — **zuletzt** |
+| `0011_meal_items_eaten` | `meal_items.eaten` + Kopplung an `meals.eaten` |
 
 Reihenfolge ist nicht optional: `0002` muss Constraints droppen, bevor es Daten
 ändert; `0004` referenziert Spalten aus `0003`; `0010` setzt die Verifikation

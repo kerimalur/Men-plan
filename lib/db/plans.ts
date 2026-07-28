@@ -7,7 +7,8 @@ const PLAN_COLUMNS = 'id, date, kcal_total, protein_total, carbs_total, fat_tota
 const MEAL_COLUMNS =
   'id, plan_id, meal_type, name, kcal_total, protein_total, carbs_total, fat_total, cost_total, eaten, created_at'
 
-const ITEM_COLUMNS = 'id, meal_id, food_id, food_name, amount, unit, kcal, protein, carbs, fat, cost, created_at'
+const ITEM_COLUMNS =
+  'id, meal_id, food_id, food_name, amount, unit, kcal, protein, carbs, fat, cost, eaten, created_at'
 
 // ── Tagespläne ──────────────────────────────────────────────────────────────
 
@@ -54,6 +55,11 @@ export async function moveMeal(id: string, planId: string, mealType: MealTypeKey
   ok(await supabase.from('meals').update({ plan_id: planId, meal_type: mealType }).eq('id', id), 'Mahlzeit verschieben')
 }
 
+/**
+ * Ganze Mahlzeit abhaken. Der Trigger aus Migration 0011 zieht alle Positionen
+ * mit — ein zweiter Schreibvorgang von hier aus ist also weder nötig noch
+ * erwünscht.
+ */
 export async function setMealEaten(id: string, eaten: boolean): Promise<void> {
   ok(await supabase.from('meals').update({ eaten }).eq('id', id), 'Mahlzeit abhaken')
 }
@@ -71,16 +77,45 @@ export interface MealItemInput {
   carbs?: number
   fat?: number
   cost: number
+  /** Beim Bearbeiten einer Mahlzeit: Häkchen der Position erhalten. */
+  eaten?: boolean
 }
 
+/**
+ * Die Spalten werden einzeln aufgezählt statt die Eingabe durchzureichen.
+ * Grund: MealModal führt an seinen Positionen reine Anzeige-Flags mit
+ * (isCustom, isQuick, customKcalPer100). Landeten die im Insert, bräche
+ * PostgREST mit „Could not find the column" ab.
+ */
 export async function addMealItems(items: MealItemInput[]): Promise<void> {
   if (items.length === 0) return
   ok(
     await supabase.from('meal_items').insert(
-      items.map(i => ({ ...i, carbs: i.carbs ?? 0, fat: i.fat ?? 0 }))
+      items.map(i => ({
+        meal_id:   i.meal_id,
+        food_id:   i.food_id,
+        food_name: i.food_name,
+        amount:    i.amount,
+        unit:      i.unit,
+        kcal:      i.kcal,
+        protein:   i.protein,
+        carbs:     i.carbs ?? 0,
+        fat:       i.fat ?? 0,
+        cost:      i.cost,
+        eaten:     i.eaten ?? false,
+      }))
     ),
     'Zutaten speichern'
   )
+}
+
+/**
+ * Einzelne Position abhaken. Die Kopplung an die Mahlzeit macht der Trigger
+ * aus Migration 0011: sind danach alle Positionen abgehakt, gilt die Mahlzeit
+ * als gegessen; fehlt eine, gilt sie es nicht mehr.
+ */
+export async function setMealItemEaten(id: string, eaten: boolean): Promise<void> {
+  ok(await supabase.from('meal_items').update({ eaten }).eq('id', id), 'Position abhaken')
 }
 
 export async function deleteMealItems(mealId: string): Promise<void> {

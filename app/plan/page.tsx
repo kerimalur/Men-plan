@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   getDayView, getPlansInRange, getMarkersInRange, setDayMarker,
   ensurePlan, deleteMeal, deleteMealItem, updateMealItemAmount, createMeal, addMealItems,
-  applyDefaultMeals, type DayView,
+  setMealEaten, setMealItemEaten, applyDefaultMeals, type DayView,
 } from '@/lib/db/plans'
 import { setPortionConsumed } from '@/lib/db/cycles'
+import { dayEaten } from '@/lib/calculations'
 import type { DayMarker, Meal, MealItem, MealPlan } from '@/lib/db/types'
 import { MEAL_TYPE_ORDER, MEAL_TYPE_LABELS, type MealTypeKey } from '@/lib/mealTypes'
 import { loadSettings, DEFAULTS } from '@/lib/settings'
@@ -15,6 +16,7 @@ import { formatAmount, toBaseUnit } from '@/lib/units'
 import { useSwipe } from '@/lib/useSwipe'
 import { useToast } from '@/components/Toast'
 import MealModal, { type ExistingMeal } from '@/components/MealModal'
+import QuickAddItem, { type QuickItem } from '@/components/QuickAddItem'
 import Card, { CardLabel } from '@/components/ui/Card'
 import Pill, { MealTypePill } from '@/components/ui/Pill'
 import Button, { IconButton } from '@/components/ui/Button'
@@ -111,6 +113,13 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
 
   useEffect(() => { setLoading(true); void Promise.resolve().then(load) }, [load])
 
+  // Was bereits gegessen ist, wird aus dem geladenen Tag gerechnet — damit
+  // ziehen die Summen beim Abhaken sofort nach, ohne Neuladen.
+  const eaten = useMemo(
+    () => dayEaten(day?.meals ?? [], day?.portions ?? []),
+    [day]
+  )
+
   if (loading) return <p className="text-sm text-center py-10 text-text-muted">Laden…</p>
 
   if (error) {
@@ -125,17 +134,78 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
   if (!day) return null
 
   const isFree = day.marker?.is_free ?? false
+
+  // Geplant kommt aus meal_plans — dort addieren die Trigger beide Quellen,
+  // freie Mahlzeiten und Boxen. Nicht im Frontend nachrechnen.
   const totals = {
-    kcal:    day.plan?.kcal_total ?? 0,
-    protein: day.plan?.protein_total ?? 0,
+    kcal:    Number(day.plan?.kcal_total ?? 0),
+    protein: Number(day.plan?.protein_total ?? 0),
+    carbs:   Number(day.plan?.carbs_total ?? 0),
+    fat:     Number(day.plan?.fat_total ?? 0),
     cost:    Number(day.plan?.cost_total ?? 0),
   }
 
   const d = new Date(`${date}T12:00:00`)
 
+  /** Tagesansicht lokal fortschreiben, ohne neu zu laden. */
+  function patchMeal(mealId: string, fn: (m: Meal) => Meal) {
+    setDay(prev => prev ? { ...prev, meals: prev.meals.map(m => (m.id === mealId ? fn(m) : m)) } : prev)
+  }
+
+  /**
+   * Position abhaken. Optimistisch: der lokale Stand wird sofort gesetzt, die
+   * Kopplung an die Mahlzeit hier gespiegelt (in der Datenbank macht sie der
+   * Trigger aus Migration 0011). Scheitert das Schreiben, wird neu geladen.
+   */
+  async function toggleItem(mealId: string, itemId: string, next: boolean) {
+    patchMeal(mealId, m => {
+      const items = (m.meal_items ?? []).map(i => (i.id === itemId ? { ...i, eaten: next } : i))
+      return { ...m, meal_items: items, eaten: items.length > 0 && items.every(i => i.eaten) }
+    })
+    try {
+      await setMealItemEaten(itemId, next)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Abhaken fehlgeschlagen', 'error')
+      await load()
+    }
+  }
+
+  /** Ganze Mahlzeit abhaken — zieht alle Positionen mit. */
+  async function toggleMeal(mealId: string, next: boolean) {
+    patchMeal(mealId, m => ({
+      ...m,
+      eaten: next,
+      meal_items: (m.meal_items ?? []).map(i => ({ ...i, eaten: next })),
+    }))
+    try {
+      await setMealEaten(mealId, next)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Abhaken fehlgeschlagen', 'error')
+      await load()
+    }
+  }
+
+  async function togglePortion(portionId: string, next: boolean) {
+    setDay(prev => prev
+      ? { ...prev, portions: prev.portions.map(p => (p.id === portionId ? { ...p, consumed: next } : p)) }
+      : prev)
+    try {
+      await setPortionConsumed(portionId, next)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Abhaken fehlgeschlagen', 'error')
+      await load()
+    }
+  }
+
+  /** Einzelne Position anhängen. Neu laden, weil die Summen in der DB fallen. */
+  async function addSingleItem(mealId: string, item: QuickItem) {
+    await addMealItems([{ ...item, meal_id: mealId }])
+    await load()
+  }
+
   async function handleSaveMeal(data: {
     mealName: string
-    items: { food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; carbs?: number; fat?: number; cost: number }[]
+    items: { food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; carbs?: number; fat?: number; cost: number; eaten?: boolean }[]
     mealType: string
     existingMealId?: string
   }) {
@@ -237,6 +307,18 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
         </Card>
       )}
 
+      {/* Laufende Summe: bereits gegessen gegenüber geplant */}
+      <Card className="mb-4">
+        <CardLabel>Gegessen / Geplant</CardLabel>
+        <div className="grid grid-cols-3 gap-x-4 gap-y-3 mt-2">
+          <EatenStat label="kcal"       eaten={eaten.kcal}    planned={totals.kcal} />
+          <EatenStat label="Protein g"  eaten={eaten.protein} planned={totals.protein} />
+          <EatenStat label="KH g"       eaten={eaten.carbs}   planned={totals.carbs} />
+          <EatenStat label="Fett g"     eaten={eaten.fat}     planned={totals.fat} />
+          <EatenStat label="Kosten CHF" eaten={eaten.cost}    planned={totals.cost} decimals={2} />
+        </div>
+      </Card>
+
       {/* Slots */}
       <div className="flex flex-col gap-3">
         {MEAL_TYPE_ORDER.map(slot => {
@@ -263,7 +345,7 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
                 <div key={p.id} className="rounded-inner bg-sage-soft p-3 mb-2">
                   <Checkbox
                     checked={p.consumed}
-                    onChange={async v => { await setPortionConsumed(p.id, v); await load() }}
+                    onChange={v => { void togglePortion(p.id, v) }}
                     label={p.prep_batches.recipes?.name ?? 'Box'}
                     trailing={`${Math.round(p.prep_batches.kcal_per_portion)} kcal`}
                   />
@@ -281,12 +363,16 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
                   editingItem={editingItem}
                   setEditingItem={setEditingItem}
                   onReload={load}
+                  onToggleMeal={next => toggleMeal(meal.id, next)}
+                  onToggleItem={(itemId, next) => toggleItem(meal.id, itemId, next)}
+                  onAddItem={item => addSingleItem(meal.id, item)}
                   onEdit={() => {
                     setEditingMeal({
                       id: meal.id, name: meal.name, meal_type: meal.meal_type,
                       items: (meal.meal_items ?? []).map(i => ({
                         food_id: i.food_id, food_name: i.food_name, amount: i.amount, unit: i.unit,
                         kcal: i.kcal, protein: i.protein, carbs: i.carbs, fat: i.fat, cost: i.cost,
+                        eaten: i.eaten,
                       })),
                     })
                     setAddingFor(slot)
@@ -302,7 +388,7 @@ function DayDetail({ date, goals, onDate, toast, toastUndo }: {
                         await addMealItems((snapshot.meal_items ?? []).map(i => ({
                           meal_id: restored.id, food_id: i.food_id, food_name: i.food_name,
                           amount: i.amount, unit: i.unit, kcal: i.kcal, protein: i.protein,
-                          carbs: i.carbs, fat: i.fat, cost: i.cost,
+                          carbs: i.carbs, fat: i.fat, cost: i.cost, eaten: i.eaten,
                         })))
                         await load()
                       } catch (e) {
@@ -334,22 +420,58 @@ async function deleteMealItemsFor(mealId: string) {
   await deleteMealItems(mealId)
 }
 
+// ── Gegessen gegenüber geplant, eine Kennzahl ───────────────────────────────
+
+function EatenStat({ label, eaten, planned, decimals = 0 }: {
+  label: string
+  eaten: number
+  planned: number
+  decimals?: number
+}) {
+  return (
+    <div className="min-w-0">
+      <CardLabel>{label}</CardLabel>
+      <p className="mt-0.5 leading-tight truncate">
+        <span className={`font-display font-normal text-xl ${eaten > 0 ? 'text-text' : 'text-text-faint'}`}>
+          {eaten.toFixed(decimals)}
+        </span>
+        <span className="text-xs text-text-muted"> / {planned.toFixed(decimals)}</span>
+      </p>
+    </div>
+  )
+}
+
 // ── Mahlzeiten-Block mit Inline-Mengenbearbeitung ───────────────────────────
 
-function MealBlock({ meal, editingItem, setEditingItem, onReload, onEdit, onDelete }: {
+function MealBlock({
+  meal, editingItem, setEditingItem, onReload, onToggleMeal, onToggleItem, onAddItem, onEdit, onDelete,
+}: {
   meal: Meal
   editingItem: string | null
   setEditingItem: (id: string | null) => void
   onReload: () => Promise<void>
+  onToggleMeal: (next: boolean) => Promise<void>
+  onToggleItem: (itemId: string, next: boolean) => Promise<void>
+  onAddItem: (item: QuickItem) => Promise<void>
   onEdit: () => void
   onDelete: () => Promise<void>
 }) {
   const items = meal.meal_items ?? []
+  const [adding, setAdding] = useState(false)
+
+  const done = items.filter(i => i.eaten).length
 
   return (
     <div className="rounded-inner bg-surface-alt p-3 mb-2">
       <div className="flex items-center justify-between gap-2 mb-2">
-        <p className="font-display font-normal text-base text-text flex-1 min-w-0">{meal.name}</p>
+        <Checkbox
+          checked={meal.eaten}
+          onChange={v => { void onToggleMeal(v) }}
+          label={meal.name}
+          labelClassName="font-display font-normal text-base"
+          ariaLabel={`${meal.name} als gegessen markieren`}
+          className="flex-1 min-w-0"
+        />
         <button onClick={onEdit} className="tap-inline text-xs text-accent px-1">Bearbeiten</button>
         <button onClick={onDelete} aria-label="Mahlzeit löschen" className="tap-inline text-text-faint hover:text-danger px-1">×</button>
       </div>
@@ -358,9 +480,9 @@ function MealBlock({ meal, editingItem, setEditingItem, onReload, onEdit, onDele
         {items.map(item => {
           const base = toBaseUnit(item.amount, item.unit)
           return (
-            <li key={item.id} className="border-b border-border-soft last:border-0 py-1.5">
+            <li key={item.id} className="border-b border-border-soft last:border-0">
               {editingItem === item.id ? (
-                <div>
+                <div className="py-1.5">
                   <p className="text-sm text-text mb-2">{item.food_name}</p>
                   <AmountInput
                     value={item.amount}
@@ -377,7 +499,13 @@ function MealBlock({ meal, editingItem, setEditingItem, onReload, onEdit, onDele
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <span className="flex-1 text-sm text-text-secondary min-w-0">{item.food_name}</span>
+                  <Checkbox
+                    checked={item.eaten}
+                    onChange={v => { void onToggleItem(item.id, v) }}
+                    label={item.food_name}
+                    ariaLabel={`${item.food_name} als gegessen markieren`}
+                    className="flex-1 min-w-0"
+                  />
                   <button
                     onClick={() => setEditingItem(item.id)}
                     className="tap-inline text-sm text-text-muted px-2 py-0.5 rounded-button hover:bg-border-soft"
@@ -396,12 +524,29 @@ function MealBlock({ meal, editingItem, setEditingItem, onReload, onEdit, onDele
         })}
       </ul>
 
-      <div className="flex gap-3 mt-2 text-xs font-semibold text-text-secondary">
-        <span>{Math.round(meal.kcal_total)} kcal</span>
-        <span>{Math.round(meal.protein_total)} g P</span>
-        {meal.carbs_total > 0 && <span>{Math.round(meal.carbs_total)} g KH</span>}
-        {meal.fat_total > 0 && <span>{Math.round(meal.fat_total)} g Fett</span>}
+      <div className="flex items-center justify-between gap-3 mt-2">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-text-secondary">
+          <span>{Math.round(meal.kcal_total)} kcal</span>
+          <span>{Math.round(meal.protein_total)} g P</span>
+          {meal.carbs_total > 0 && <span>{Math.round(meal.carbs_total)} g KH</span>}
+          {meal.fat_total > 0 && <span>{Math.round(meal.fat_total)} g Fett</span>}
+          {items.length > 0 && (
+            <span className="text-text-muted font-normal">{done}/{items.length} gegessen</span>
+          )}
+        </div>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="tap-inline shrink-0 text-xs font-semibold text-accent"
+          >
+            + Position
+          </button>
+        )}
       </div>
+
+      {adding && (
+        <QuickAddItem onAdd={onAddItem} onCancel={() => setAdding(false)} />
+      )}
     </div>
   )
 }

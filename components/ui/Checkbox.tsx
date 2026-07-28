@@ -6,6 +6,10 @@ interface CheckboxProps {
   /** Zusatz rechtsbündig, z.B. die Menge. */
   trailing?: React.ReactNode
   className?: string
+  /** Zusätzliche Klassen fürs Label — etwa die Display-Schrift für Mahlzeiten. */
+  labelClassName?: string
+  /** Vorlesbare Beschriftung, wenn `label` allein zu knapp ist. */
+  ariaLabel?: string
 }
 
 /**
@@ -13,12 +17,15 @@ interface CheckboxProps {
  * Abgehakt: Fläche in --color-success, weisses Häkchen.
  * Die ganze Zeile ist Touch-Ziel und mindestens 44 px hoch.
  */
-export default function Checkbox({ checked, onChange, label, trailing, className = '' }: CheckboxProps) {
+export default function Checkbox({
+  checked, onChange, label, trailing, className = '', labelClassName = '', ariaLabel,
+}: CheckboxProps) {
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
+      aria-label={ariaLabel}
       onClick={() => onChange(!checked)}
       className={`flex items-center gap-3 w-full min-h-11 text-left transition-colors ${className}`}
     >
@@ -37,7 +44,7 @@ export default function Checkbox({ checked, onChange, label, trailing, className
       </span>
 
       {label && (
-        <span className={`flex-1 text-sm ${checked ? 'line-through text-text-muted' : 'text-text'}`}>
+        <span className={`flex-1 min-w-0 text-sm ${checked ? 'line-through text-text-muted' : 'text-text'} ${labelClassName}`}>
           {label}
         </span>
       )}

@@ -41,13 +41,19 @@ interface Item {
   customKcalPer100?: number
   customProteinPer100?: number
   isQuick?: boolean
+  /**
+   * Häkchen der Position. Beim Bearbeiten einer bestehenden Mahlzeit werden
+   * alle Positionen gelöscht und neu angelegt — ohne dieses Feld gingen die
+   * bereits gesetzten Häkchen dabei verloren.
+   */
+  eaten?: boolean
 }
 
 export interface ExistingMeal {
   id: string
   name: string
   meal_type: string
-  items: { food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; carbs?: number; fat?: number; cost: number }[]
+  items: { food_id: string | null; food_name: string; amount: number; unit: string; kcal: number; protein: number; carbs?: number; fat?: number; cost: number; eaten?: boolean }[]
 }
 
 interface Props {
@@ -73,6 +79,7 @@ export default function MealModal({ mealType, onClose, onSave, existingMeal }: P
       food_id: i.food_id, food_name: i.food_name, amount: i.amount,
       unit: i.unit, kcal: i.kcal, protein: i.protein,
       carbs: i.carbs ?? 0, fat: i.fat ?? 0, cost: i.cost,
+      eaten: i.eaten ?? false,
     })) || []
   )
 
